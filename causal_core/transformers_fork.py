@@ -1,7 +1,7 @@
 """Mount repo fork modules under ``transformers.models.*``.
 
 Stock HuggingFace ``transformers`` (>=5) provides the base package. Our fork
-under ``transformers/src/transformers/models/`` carries ONLY/chall attention
+under ``transformers/src/transformers/models/`` carries ONLY/ggd attention
 patches for Qwen3-VL and InternVL; those files must replace or extend the
 corresponding ``transformers.models`` submodules at import time.
 """

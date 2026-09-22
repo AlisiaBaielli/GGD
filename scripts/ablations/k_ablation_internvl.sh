@@ -57,12 +57,12 @@ python experiments/chair/internvl.py \
   --data_path "${COCO_DIR}/val2014" \
   --anno_path "${COCO_DIR}/annotations/instances_val2014.json" \
   --out_path "${OUT}" \
-  --c_scores_path "${ZSCORE}" \
+  --eic_scores_path "${ZSCORE}" \
   --layer_index 1 \
   --alpha "${ALPHA}" \
   --num_eval_samples "${NCHAIR:-500}" \
-  --method_name "chall_K${K}"
+  --method_name "ggd_K${K}"
 
-CAP="$(chall_caption_path "${OUT}" "${ALPHA}" "chall_K${K}")"
+CAP="$(ggd_caption_path "${OUT}" "${ALPHA}" "ggd_K${K}")"
 run_chair_metrics "${CAP}" "${OUT}/chair_results.json"
 echo "=== InternVL K=${K} CHAIR done ==="

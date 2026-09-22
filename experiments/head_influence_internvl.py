@@ -46,7 +46,7 @@ def main():
     payload = torch.load(args.scores_path, map_location="cpu", weights_only=False)
     C = payload["C"].float() if "C" in payload else payload["scores"].float()
     n_heads = int(C.shape[0])
-    log.info(f"C-scores at L{args.enhance_layer_index}: nonzero={int((C>0).sum())}/{n_heads}")
+    log.info(f"EIC scores at L{args.enhance_layer_index}: nonzero={int((C>0).sum())}/{n_heads}")
     log.info(f"Top-5 heads by C: {C.argsort(descending=True)[:5].tolist()}")
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -175,7 +175,7 @@ def main():
     out = {
         "model": "InternVL3.5-8B-HF",
         "layer": args.enhance_layer_index,
-        "C_scores": C_np.tolist(),
+        "eic_scores": C_np.tolist(),
         "n_generative": int(len(gen_deltas)),
         "n_yesno": int(len(yn_deltas)),
         "gen_mean_delta": gen_mean.tolist(),

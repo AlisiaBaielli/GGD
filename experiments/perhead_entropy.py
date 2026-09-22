@@ -185,7 +185,7 @@ def main():
     p.add_argument("--model_path",      type=str,   default=str(REPO/"data/models/llava-v1.5-7b"))
     p.add_argument("--data_path",       type=str,   default=str(REPO/"data/coco/val2014"))
     p.add_argument("--anno_path",       type=str,   default=str(REPO/"data/coco/annotations/instances_val2014.json"))
-    p.add_argument("--c_scores_path",   type=str,   default=str(REPO/"scores/llava_eic.pt"))
+    p.add_argument("--eic_scores_path",   type=str,   default=str(REPO/"scores/llava_eic.pt"))
     p.add_argument("--out_path",        type=str,   required=True)
     p.add_argument("--num_eval_samples",type=int,   default=500)
     p.add_argument("--max_new_tokens",  type=int,   default=128)
@@ -212,16 +212,16 @@ def main():
     image_processor = vt.image_processor
     evolve_only_sampling()
 
-    payload = torch.load(args.c_scores_path, map_location="cpu")
+    payload = torch.load(args.eic_scores_path, map_location="cpu")
     if isinstance(payload, dict):
-        c_scores = payload.get("scores", payload.get("C", next(iter(payload.values()))))
+        eic_scores = payload.get("scores", payload.get("C", next(iter(payload.values()))))
     else:
-        c_scores = payload
-    if c_scores.dim() == 2:
-        c_scores = c_scores[args.layer_index]
-    c_scores = c_scores.float().numpy()
-    log.info(f"C-scores shape: {c_scores.shape}, layer {args.layer_index}")
-    log.info(f"Top-5 C-score heads: {np.argsort(c_scores)[::-1][:5]}")
+        eic_scores = payload
+    if eic_scores.dim() == 2:
+        eic_scores = eic_scores[args.layer_index]
+    eic_scores = eic_scores.float().numpy()
+    log.info(f"EIC scores shape: {eic_scores.shape}, layer {args.layer_index}")
+    log.info(f"Top-5 EIC score heads: {np.argsort(eic_scores)[::-1][:5]}")
 
     monitor = PerHeadMonitor(model, args.layer_index, args.img_start, args.img_len)
     orig_fwd = monitor.install()
@@ -302,13 +302,13 @@ def main():
     log.info(f"Saved {len(records)} records → {out_file}")
 
     log.info("Running per-head analysis...")
-    _run_analysis(records, c_scores, args.out_path)
+    _run_analysis(records, eic_scores, args.out_path)
 
-def _run_analysis(records, c_scores, out_path):
+def _run_analysis(records, eic_scores, out_path):
     from sklearn.metrics import roc_curve, auc as sk_auc
     from scipy import stats
 
-    num_heads = len(c_scores)
+    num_heads = len(eic_scores)
 
     def interp(arr1d, n_out):
         """Interpolate a 1-D array to n_out points."""
@@ -353,32 +353,32 @@ def _run_analysis(records, c_scores, out_path):
 
     aucs = np.array(aucs)
 
-    spearman = stats.spearmanr(c_scores, aucs)
-    log.info(f"Spearman r(C-score, AUC) = {spearman.statistic:.4f}, p = {spearman.pvalue:.4f}")
+    spearman = stats.spearmanr(eic_scores, aucs)
+    log.info(f"Spearman r(EIC score, AUC) = {spearman.statistic:.4f}, p = {spearman.pvalue:.4f}")
 
-    order = np.argsort(c_scores)[::-1]
-    log.info("\nHead | C-score | AUC  | high-C?")
-    high_c = c_scores > 0
+    order = np.argsort(eic_scores)[::-1]
+    log.info("\nHead | EIC score | AUC  | selected?")
+    selected = eic_scores > 0
     for h in order:
-        log.info(f"  {h:2d} | {c_scores[h]:7.4f} | {aucs[h]:.4f} | {'YES' if high_c[h] else 'no'}")
+        log.info(f"  {h:2d} | {eic_scores[h]:7.4f} | {aucs[h]:.4f} | {'YES' if selected[h] else 'no'}")
 
-    auc_high = aucs[high_c]
-    auc_low  = aucs[~high_c]
-    t, p = stats.ttest_ind(auc_high, auc_low, equal_var=False)
-    log.info(f"\nMean AUC high-C heads: {auc_high.mean():.4f} (n={len(auc_high)})")
-    log.info(f"Mean AUC low-C  heads: {auc_low.mean():.4f}  (n={len(auc_low)})")
+    auc_selected = aucs[selected]
+    auc_unselected = aucs[~selected]
+    t, p = stats.ttest_ind(auc_selected, auc_unselected, equal_var=False)
+    log.info(f"\nMean AUC selected EIC heads: {auc_selected.mean():.4f} (n={len(auc_selected)})")
+    log.info(f"Mean AUC unselected heads: {auc_unselected.mean():.4f} (n={len(auc_unselected)})")
     log.info(f"Welch t={t:.3f}, p={p:.4f}")
 
     summary = {
         "spearman_r": round(float(spearman.statistic), 4),
         "spearman_p": round(float(spearman.pvalue), 4),
-        "mean_auc_high_c": round(float(auc_high.mean()), 4),
-        "mean_auc_low_c":  round(float(auc_low.mean()), 4),
+        "mean_auc_selected": round(float(auc_selected.mean()), 4),
+        "mean_auc_unselected": round(float(auc_unselected.mean()), 4),
         "t_stat": round(float(t), 4),
         "p_value": round(float(p), 4),
         "per_head": [
-            {"head": int(h), "c_score": round(float(c_scores[h]), 4),
-             "auc": round(float(aucs[h]), 4), "high_c": bool(high_c[h])}
+            {"head": int(h), "eic_score": round(float(eic_scores[h]), 4),
+             "auc": round(float(aucs[h]), 4), "selected": bool(selected[h])}
             for h in range(num_heads)
         ],
     }
@@ -394,28 +394,28 @@ def _run_analysis(records, c_scores, out_path):
         fig, axes = plt.subplots(1, 2, figsize=(10, 4))
 
         ax = axes[0]
-        colors = ["#DC2626" if high_c[h] else "#6B7280" for h in range(num_heads)]
-        ax.scatter(c_scores, aucs, c=colors, s=60, alpha=0.8, edgecolors="none")
+        colors = ["#DC2626" if selected[h] else "#6B7280" for h in range(num_heads)]
+        ax.scatter(eic_scores, aucs, c=colors, s=60, alpha=0.8, edgecolors="none")
         ax.axhline(0.5, color="black", linestyle="--", lw=1, alpha=0.5, label="Random (0.5)")
-        ax.set_xlabel("C-score", fontsize=11)
+        ax.set_xlabel("EIC score", fontsize=11)
         ax.set_ylabel("Hallucination AUC", fontsize=11)
-        ax.set_title(f"C-score vs. Per-Head AUC\n(Spearman r={spearman.statistic:.3f}, p={spearman.pvalue:.3f})", fontsize=11)
+        ax.set_title(f"EIC score vs. Per-Head AUC\n(Spearman r={spearman.statistic:.3f}, p={spearman.pvalue:.3f})", fontsize=11)
         from matplotlib.lines import Line2D
         legend_elems = [
-            Line2D([0],[0], marker='o', color='w', markerfacecolor='#DC2626', markersize=8, label='High-C heads'),
-            Line2D([0],[0], marker='o', color='w', markerfacecolor='#6B7280', markersize=8, label='Low-C heads'),
+            Line2D([0],[0], marker='o', color='w', markerfacecolor='#DC2626', markersize=8, label='Selected EIC heads'),
+            Line2D([0],[0], marker='o', color='w', markerfacecolor='#6B7280', markersize=8, label='Unselected heads'),
         ]
         ax.legend(handles=legend_elems, fontsize=9)
 
         ax2 = axes[1]
-        means = [auc_high.mean(), auc_low.mean()]
-        sems  = [auc_high.std()/np.sqrt(len(auc_high)), auc_low.std()/np.sqrt(len(auc_low))]
-        bars  = ax2.bar(["High-C heads\n(C-score > 0)", "Low-C heads\n(C-score ≤ 0)"],
+        means = [auc_selected.mean(), auc_unselected.mean()]
+        sems  = [auc_selected.std()/np.sqrt(len(auc_selected)), auc_unselected.std()/np.sqrt(len(auc_unselected))]
+        bars  = ax2.bar(["Selected EIC heads", "Unselected heads"],
                         means, yerr=sems, capsize=5,
                         color=["#DC2626", "#6B7280"], alpha=0.8, width=0.4)
         ax2.axhline(0.5, color="black", linestyle="--", lw=1, alpha=0.5)
         ax2.set_ylabel("Mean Hallucination AUC", fontsize=11)
-        ax2.set_title(f"High-C vs Low-C Heads\n(t={t:.2f}, p={p:.3f})", fontsize=11)
+        ax2.set_title(f"Selected vs. Unselected Heads\n(t={t:.2f}, p={p:.3f})", fontsize=11)
         ax2.set_ylim(0.48, max(means) + 0.03)
 
         plt.tight_layout()

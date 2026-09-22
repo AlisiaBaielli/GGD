@@ -28,11 +28,11 @@ python experiments/chair/llava.py \
     --data_path "${COCO_DIR}/val2014" \
     --anno_path "${COCO_DIR}/annotations/instances_val2014.json" \
     --out_path "${OUT}" \
-    --c_scores_path "${SCORES}" \
+    --eic_scores_path "${SCORES}" \
     --layer_index 1 \
     --alpha 0.7 \
     --num_eval_samples "${NSAMP:-500}" \
-    --method_name "chall_${TAG}"
+    --method_name "ggd_${TAG}"
 
-run_chair_metrics "${OUT}/chall_${TAG}.jsonl" "${OUT}/chair_results.json"
+run_chair_metrics "${OUT}/ggd_${TAG}.jsonl" "${OUT}/chair_results.json"
 echo "=== LLaVA head ablation ${TAG} ==="

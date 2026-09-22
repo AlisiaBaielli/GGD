@@ -1,5 +1,5 @@
 """Offline EIC calibration: compute per-head TVER across K environments,
-derive C-scores, and select the intervention layer.
+derive EIC scores, and select the intervention layer.
 """
 from __future__ import annotations
 
@@ -112,7 +112,7 @@ def main():
         default="env_per_example",
         choices=["env_per_example", "global"],
         help=(
-            "How to estimate variance for C-score. "
+            "How to estimate variance for EIC score. "
             "env_per_example computes Var_env(TVER) per example then averages across examples "
             "(recommended for invariance signal). "
             "global reproduces legacy variance over all (example,env) points."
@@ -393,7 +393,7 @@ def main():
             )
 
     torch.save(payload, args.out)
-    print(f"Saved C-scores to {args.out}")
+    print(f"Saved EIC scores to {args.out}")
 
 def _internvl_main(args=None):
     if args is None:
@@ -607,7 +607,7 @@ def _internvl_main(args=None):
             )
 
     torch.save(payload, args.out)
-    print(f"Saved C-scores to {args.out} (chosen_layer={int(chosen_layer)})")
+    print(f"Saved EIC scores to {args.out} (chosen_layer={int(chosen_layer)})")
 
 
 if __name__ == "__main__":

@@ -1,7 +1,7 @@
 """
 MME evaluation for LLaVA-v1.5-7B.
 
-Supports: vanilla, chall (ours), ONLY, VCD, M3ID.
+Supports: vanilla, ggd (ours), ONLY, VCD, M3ID.
 """
 import argparse
 import json
@@ -31,7 +31,7 @@ from llava.model.builder import load_pretrained_model
 from llava.utils import disable_torch_init
 
 from causal_core.eval_common import (
-    load_c_scores,
+    load_eic_scores,
     resolve_method,
     validate_method_flags,
 )
@@ -65,7 +65,7 @@ def parse_args():
     p.add_argument("--temperature", type=float, default=1.0)
     p.add_argument("--top_p", type=float, default=1.0)
     p.add_argument("--do_sample", type=bool, default=True)
-    p.add_argument("--c_scores_path", type=str, default=None)
+    p.add_argument("--eic_scores_path", type=str, default=None)
     p.add_argument("--layer_index", type=int, default=1)
     p.add_argument("--alpha", type=float, default=0.7)
     p.add_argument("--img_start", type=int, default=35)
@@ -100,18 +100,18 @@ def main():
     method, needs_scores = resolve_method(args)
     # `--method_name` is an output label only (the answer path is explicit via
     # --answers_file); decoding behavior must key off the canonical `method`.
-    if needs_scores and not args.c_scores_path:
-        raise ValueError(f"--c_scores_path is required for method={method}")
+    if needs_scores and not args.eic_scores_path:
+        raise ValueError(f"--eic_scores_path is required for method={method}")
 
     disable_torch_init()
     model_path = os.path.expanduser(args.model_path)
     model_name = get_model_name_from_path(model_path)
-    # CHALL's grounding monitor needs real attention weights (output_attentions),
-    # which the sdpa kernel returns as None; force eager for chall only.
+    # GGD's grounding monitor needs real attention weights (output_attentions),
+    # which the sdpa kernel returns as None; force eager for ggd only.
     tokenizer, model, image_processor, _context_len = load_pretrained_model(
         model_path, None, model_name,
         attn_implementation=(
-            "eager" if method in ("chall", "ascd") else None
+            "eager" if method in ("ggd", "ascd") else None
         ),
     )
     if method == "ascd":
@@ -127,14 +127,14 @@ def main():
     layer_for_only = args.layer_index
 
     if needs_scores:
-        c_scores = load_c_scores(args.c_scores_path, args.layer_index)
+        eic_scores = load_eic_scores(args.eic_scores_path, args.layer_index)
         log.info(
-            f"C-scores layer={args.layer_index}: "
-            f"nonzero={int((c_scores > 0).sum())}/{len(c_scores)}"
+            f"EIC scores layer={args.layer_index}: "
+            f"nonzero={int((eic_scores > 0).sum())}/{len(eic_scores)}"
         )
-        if method == "chall":
+        if method == "ggd":
             monitor = CausalMonitor(
-                model, args.layer_index, c_scores,
+                model, args.layer_index, eic_scores,
                 img_start=args.img_start, img_len=args.img_len,
             )
             orig_fwd = monitor.install_qk_hook()
@@ -144,7 +144,7 @@ def main():
         elif method == "only_eic":
             layer_for_only = inject_eic_for_only(
                 model=model,
-                scores_path=args.c_scores_path,
+                scores_path=args.eic_scores_path,
                 layer_index=args.layer_index,
                 pure_eic=True,
             )

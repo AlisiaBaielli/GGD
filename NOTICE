@@ -1,5 +1,5 @@
-This repository contains code for causal hallucination mitigation in
-vision-language models.
+This repository contains the implementation of Grounding-Guided Decoding
+for vision-language models.
 
 The original code (causal_core/, eval/, experiments/, scripts/) is released
 under the MIT License (see LICENSE).

@@ -81,8 +81,8 @@ def parse_args():
                    help="CircularEval: test all option rotations")
     p.add_argument("--single_pred_prompt", action="store_true", default=True)
     p.add_argument("--method", type=str, required=True,
-                   choices=["vanilla", "only", "chall", "vcd", "m3id", "ascd"])
-    p.add_argument("--c_scores_path", type=str,
+                   choices=["vanilla", "only", "ggd", "vcd", "m3id", "ascd"])
+    p.add_argument("--eic_scores_path", type=str,
                    default=str(REPO / "scores/llava_eic.pt"))
     p.add_argument("--noise_step", type=int, default=500)
     p.add_argument("--layer_index", type=int, default=1)
@@ -112,7 +112,7 @@ def main():
     model = LlavaLlamaForCausalLM.from_pretrained(
         args.model_path, torch_dtype=torch.float16, device_map="auto",
         attn_implementation=(
-            "eager" if args.method in ("chall", "ascd") else "sdpa"
+            "eager" if args.method in ("ggd", "ascd") else "sdpa"
         ),
     )
     model.eval()
@@ -135,14 +135,14 @@ def main():
     processors = LogitsProcessorList()
     use_only = (args.method == "only")
 
-    if args.method == "chall":
+    if args.method == "ggd":
         from causal_core.monitor import CausalMonitor, CausalLogitsProcessor
-        payload = torch.load(args.c_scores_path, map_location="cpu")
-        c_scores = payload.get("C", payload.get("scores", next(iter(payload.values()))))
-        if c_scores.dim() == 2:
-            c_scores = c_scores[args.layer_index]
-        c_scores = c_scores.float()
-        monitor = CausalMonitor(model, args.layer_index, c_scores,
+        payload = torch.load(args.eic_scores_path, map_location="cpu")
+        eic_scores = payload.get("C", payload.get("scores", next(iter(payload.values()))))
+        if eic_scores.dim() == 2:
+            eic_scores = eic_scores[args.layer_index]
+        eic_scores = eic_scores.float()
+        monitor = CausalMonitor(model, args.layer_index, eic_scores,
                                img_start=args.img_start, img_len=args.img_len)
         orig_fwd = monitor.install_qk_hook()
         processors = LogitsProcessorList([CausalLogitsProcessor(monitor, alpha=args.alpha)])

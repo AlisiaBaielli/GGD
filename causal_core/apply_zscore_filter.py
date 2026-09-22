@@ -1,4 +1,4 @@
-"""Apply z-score pre-filter to raw C-scores.
+"""Apply z-score pre-filter to raw EIC scores.
 
   1. z_{l,i} = (mu_{l,i} - mu_bar_l) / Std_i(mu_{l,i})
   2. Heads with z >= 0 are zeroed (above-average TVER = text-heavy)

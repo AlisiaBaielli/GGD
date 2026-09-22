@@ -157,7 +157,7 @@ def main():
     p.add_argument("--out_path", type=str, required=True)
     p.add_argument("--num_eval_samples", type=int, default=500)
     p.add_argument("--max_new_tokens", type=int, default=128)
-    p.add_argument("--c_scores_path", type=str, required=True)
+    p.add_argument("--eic_scores_path", type=str, required=True)
     p.add_argument("--layer_index", type=int, default=1)
     p.add_argument("--alpha", type=float, default=0.0)
     p.add_argument("--temperature", type=float, default=1.0)
@@ -191,11 +191,11 @@ def main():
 
     evolve_only_sampling_internvl()
 
-    payload = torch.load(args.c_scores_path, map_location="cpu", weights_only=False)
-    c_scores = payload["C"].float()
-    log.info(f"C-scores at L{args.layer_index}: nonzero={int((c_scores>0).sum())}/{c_scores.shape[0]}")
+    payload = torch.load(args.eic_scores_path, map_location="cpu", weights_only=False)
+    eic_scores = payload["C"].float()
+    log.info(f"EIC scores at L{args.layer_index}: nonzero={int((eic_scores>0).sum())}/{eic_scores.shape[0]}")
 
-    monitor = CausalMonitorInternVL(model, args.layer_index, c_scores, image_token_id)
+    monitor = CausalMonitorInternVL(model, args.layer_index, eic_scores, image_token_id)
     monitor.install_hook()
 
     gs_logger = GroundingLogger(monitor, alpha=args.alpha)

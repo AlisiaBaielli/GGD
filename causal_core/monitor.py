@@ -26,7 +26,7 @@ class CausalMonitor:
     modulate output logits.
     """
 
-    def __init__(self, model, layer_idx, c_scores, img_start=35, img_len=576):
+    def __init__(self, model, layer_idx, eic_scores, img_start=35, img_len=576):
         self.layer = model.model.layers[layer_idx]
         attn = self.layer.self_attn
         cfg = getattr(attn, "config", getattr(model, "config", None))
@@ -35,7 +35,7 @@ class CausalMonitor:
             cfg.hidden_size // cfg.num_attention_heads
         )
 
-        C = c_scores.float()
+        C = eic_scores.float()
         self.high_c_mask = (C > 0)
         self.high_c_indices = torch.where(self.high_c_mask)[0]
         self.c_weights = C[self.high_c_mask]
@@ -123,7 +123,7 @@ class CausalMonitorQwen3:
     compute a lightweight entropy from raw Q*K scores.
     """
 
-    def __init__(self, model, layer_idx, c_scores, image_token_id):
+    def __init__(self, model, layer_idx, eic_scores, image_token_id):
 
         if hasattr(model.model, "language_model"):
             self.attn = model.model.language_model.layers[layer_idx].self_attn
@@ -138,7 +138,7 @@ class CausalMonitorQwen3:
         self.head_dim = self.attn.head_dim
         self.scaling = self.attn.scaling
 
-        C = c_scores.float()
+        C = eic_scores.float()
         self.high_c_mask = C > 0
         self.high_c_indices = torch.where(self.high_c_mask)[0]
         self.c_weights = C[self.high_c_mask]
@@ -316,7 +316,7 @@ class CausalMonitorInternVL:
     with a fallback to the older ``.key_cache[idx]`` API.
     """
 
-    def __init__(self, model, layer_idx, c_scores, image_token_id):
+    def __init__(self, model, layer_idx, eic_scores, image_token_id):
 
         if hasattr(model, "model") and hasattr(model.model, "language_model"):
             self.attn = model.model.language_model.layers[layer_idx].self_attn
@@ -331,7 +331,7 @@ class CausalMonitorInternVL:
         self.head_dim = self.attn.head_dim
         self.scaling = self.attn.scaling
 
-        C = c_scores.float()
+        C = eic_scores.float()
         self.high_c_mask = C > 0
         self.high_c_indices = torch.where(self.high_c_mask)[0]
         self.c_weights = C[self.high_c_mask]

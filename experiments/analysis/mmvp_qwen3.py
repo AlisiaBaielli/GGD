@@ -1,5 +1,5 @@
 """
-MMVP evaluation for Qwen3-VL-8B-Instruct (vanilla / CHALL / ONLY / VCD / M3ID).
+MMVP evaluation for Qwen3-VL-8B-Instruct (vanilla / GGD / ONLY / VCD / M3ID).
 """
 import os, sys, json, argparse, logging, warnings, re, csv
 from pathlib import Path
@@ -36,11 +36,11 @@ def parse_args():
     p.add_argument("--model_path", type=str,
                    default=str(REPO / "data/models/Qwen3-VL-8B-Instruct"))
     p.add_argument("--out_path", type=str, required=True)
-    p.add_argument("--c_scores_path", type=str, required=True)
+    p.add_argument("--eic_scores_path", type=str, required=True)
     p.add_argument("--layer_index", type=int, default=0)
     p.add_argument("--alpha", type=float, default=0.3)
     p.add_argument("--max_new_tokens", type=int, default=20)
-    p.add_argument("--method_name", type=str, default="chall")
+    p.add_argument("--method_name", type=str, default="ggd")
     p.add_argument("--use_only", action="store_true", help="ONLY baseline")
     p.add_argument("--use_eic_heads", action="store_true",
                    help="With --use_only: use offline EIC head set in the CD branch")
@@ -83,18 +83,18 @@ def main():
 
     evolve_only_sampling_qwen3()
 
-    payload = torch.load(args.c_scores_path, map_location="cpu", weights_only=False)
+    payload = torch.load(args.eic_scores_path, map_location="cpu", weights_only=False)
     if isinstance(payload, dict):
-        c_scores = payload.get("C", payload.get("scores", next(iter(payload.values()))))
+        eic_scores = payload.get("C", payload.get("scores", next(iter(payload.values()))))
     else:
-        c_scores = payload
-    if c_scores.dim() == 2:
-        c_scores = c_scores[args.layer_index]
-    c_scores = c_scores.float()
+        eic_scores = payload
+    if eic_scores.dim() == 2:
+        eic_scores = eic_scores[args.layer_index]
+    eic_scores = eic_scores.float()
 
     if args.use_only and args.use_eic_heads:
         from causal_core.only_eic import inject_eic_for_only
-        inject_eic_for_only(model=model, scores_path=args.c_scores_path,
+        inject_eic_for_only(model=model, scores_path=args.eic_scores_path,
                             layer_index=args.layer_index, pure_eic=False, require_match=False)
         args.method_name = "only_eic"
     elif args.use_only:
@@ -105,10 +105,10 @@ def main():
     if args.use_only or args.use_vcd or args.use_m3id:
         log.info(f"[{args.method_name}] no monitor")
     elif args.alpha > 0:
-        monitor = CausalMonitorQwen3(model, args.layer_index, c_scores, image_token_id)
+        monitor = CausalMonitorQwen3(model, args.layer_index, eic_scores, image_token_id)
         monitor.install_hook()
         processors = LogitsProcessorList([CausalLogitsProcessor(monitor, alpha=args.alpha)])
-        log.info(f"[CHALL] layer={args.layer_index} alpha={args.alpha}")
+        log.info(f"[GGD] layer={args.layer_index} alpha={args.alpha}")
     else:
         log.info("[Vanilla]")
 

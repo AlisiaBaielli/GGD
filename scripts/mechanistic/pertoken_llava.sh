@@ -8,7 +8,7 @@ fi
 setup_cluster
 
 SCORES="${SCORES:-${SCORES_ROOT}/llava_eic.pt}"
-OUT="${OUT_ROOT}/mechanistic/pertoken_chall"
+OUT="${OUT_ROOT}/mechanistic/pertoken_ggd"
 mkdir -p "${OUT}"
 
 python experiments/pertoken_analysis.py \
@@ -16,7 +16,7 @@ python experiments/pertoken_analysis.py \
   --model_path "${MODEL_LLAVA}" \
   --data_path "${COCO_DIR}/val2014" \
   --anno_path "${COCO_DIR}/annotations/instances_val2014.json" \
-  --c_scores_path "${SCORES}" \
+  --eic_scores_path "${SCORES}" \
   --layer_index 1 \
   --alpha 0.7 \
   --num_eval_samples "${NSAMP:-500}" \

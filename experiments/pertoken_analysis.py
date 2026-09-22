@@ -171,7 +171,7 @@ def main():
     p.add_argument("--out_path", type=str, required=True)
     p.add_argument("--num_eval_samples", type=int, default=500)
     p.add_argument("--max_new_tokens", type=int, default=128)
-    p.add_argument("--c_scores_path", type=str, required=True)
+    p.add_argument("--eic_scores_path", type=str, required=True)
     p.add_argument("--layer_index", type=int, default=1)
     p.add_argument("--alpha", type=float, default=0.3)
     p.add_argument("--img_start", type=int, default=35)
@@ -200,18 +200,18 @@ def main():
 
     evolve_only_sampling()
 
-    payload = torch.load(args.c_scores_path, map_location="cpu")
+    payload = torch.load(args.eic_scores_path, map_location="cpu")
     if isinstance(payload, dict):
-        c_scores = payload.get("scores", payload.get("C", None))
-        if c_scores is None:
-            c_scores = next(iter(payload.values()))
+        eic_scores = payload.get("scores", payload.get("C", None))
+        if eic_scores is None:
+            eic_scores = next(iter(payload.values()))
     else:
-        c_scores = payload
-    if c_scores.dim() == 2:
-        c_scores = c_scores[args.layer_index]
-    c_scores = c_scores.float()
+        eic_scores = payload
+    if eic_scores.dim() == 2:
+        eic_scores = eic_scores[args.layer_index]
+    eic_scores = eic_scores.float()
 
-    monitor = CausalMonitor(model, args.layer_index, c_scores,
+    monitor = CausalMonitor(model, args.layer_index, eic_scores,
                           img_start=args.img_start, img_len=args.img_len)
     orig_fwd = monitor.install_qk_hook()
 

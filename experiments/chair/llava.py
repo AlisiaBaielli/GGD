@@ -1,6 +1,6 @@
 """CHAIR evaluation for LLaVA-v1.5-7B.
 
-Supports: vanilla, chall (ours), ONLY, ONLY+EIC, VCD, M3ID, ASCD.
+Supports: vanilla, ggd (ours), ONLY, ONLY+EIC, VCD, M3ID, ASCD.
 """
 import argparse
 import json
@@ -33,7 +33,7 @@ from llava.model import LlavaLlamaForCausalLM
 from causal_core.eval_common import (
     caption_output_path,
     excluded_image_ids,
-    load_c_scores,
+    load_eic_scores,
     resolve_method,
     select_image_files,
     validate_method_flags,
@@ -85,7 +85,7 @@ def parse_args():
         default="Please describe this image in detail.",
     )
 
-    p.add_argument("--c_scores_path", type=str, default=None)
+    p.add_argument("--eic_scores_path", type=str, default=None)
     p.add_argument("--layer_index", type=int, default=1)
     p.add_argument("--alpha", type=float, default=0.7)
     p.add_argument("--img_start", type=int, default=35)
@@ -94,7 +94,7 @@ def parse_args():
                    help="Override output method tag (default: inferred from flags)")
 
     p.add_argument("--no_hook", action="store_true",
-                   help="Disable CHALL monitor (vanilla or ONLY/VCD/M3ID)")
+                   help="Disable GGD monitor (vanilla or ONLY/VCD/M3ID)")
     p.add_argument("--use_only", action="store_true", help="ONLY baseline")
     p.add_argument("--use_eic_heads", action="store_true",
                    help="With --use_only: use offline EIC head set in CD branch")
@@ -126,18 +126,18 @@ def main():
     validate_method_flags(args)
     method, needs_scores = resolve_method(args)
     # `method` is the canonical decoding behavior (vanilla/only/only_eic/vcd/m3id/
-    # ascd/chall) derived from flags. `--method_name` is only an OUTPUT LABEL (e.g.
-    # "chall_random" for head-selection ablations) and must NOT change behavior.
+    # ascd/ggd) derived from flags. `--method_name` is only an OUTPUT LABEL (e.g.
+    # "ggd_random" for head-selection ablations) and must NOT change behavior.
     label = args.method_name if args.method_name else method
-    if needs_scores and not args.c_scores_path:
-        raise ValueError(f"--c_scores_path is required for method={method}")
+    if needs_scores and not args.eic_scores_path:
+        raise ValueError(f"--eic_scores_path is required for method={method}")
 
     tokenizer = AutoTokenizer.from_pretrained(args.model_path, use_fast=False)
-    # CHALL needs returned attention weights; ASCD modifies pre-softmax attention
+    # GGD needs returned attention weights; ASCD modifies pre-softmax attention
     # logits. Both therefore require the eager implementation.
     attn_impl = (
         "eager"
-        if method in ("chall", "ascd")
+        if method in ("ggd", "ascd")
         else "sdpa"
     ) if args.attn_implementation == "auto" else args.attn_implementation
     if method == "ascd" and attn_impl != "eager":
@@ -174,17 +174,17 @@ def main():
     layer_for_only = args.layer_index
 
     if needs_scores:
-        if not args.c_scores_path:
-            raise ValueError(f"--c_scores_path is required for method={method}")
-        c_scores = load_c_scores(args.c_scores_path, args.layer_index)
+        if not args.eic_scores_path:
+            raise ValueError(f"--eic_scores_path is required for method={method}")
+        eic_scores = load_eic_scores(args.eic_scores_path, args.layer_index)
         log.info(
-            f"C-scores layer={args.layer_index}: "
-            f"nonzero={int((c_scores > 0).sum())}/{len(c_scores)}"
+            f"EIC scores layer={args.layer_index}: "
+            f"nonzero={int((eic_scores > 0).sum())}/{len(eic_scores)}"
         )
 
-        if method == "chall":
+        if method == "ggd":
             monitor = CausalMonitor(
-                model, args.layer_index, c_scores,
+                model, args.layer_index, eic_scores,
                 img_start=args.img_start,
                 img_len=args.img_len,
             )
@@ -195,7 +195,7 @@ def main():
         elif method == "only_eic":
             layer_for_only = inject_eic_for_only(
                 model=model,
-                scores_path=args.c_scores_path,
+                scores_path=args.eic_scores_path,
                 layer_index=args.layer_index,
                 pure_eic=True,
             )

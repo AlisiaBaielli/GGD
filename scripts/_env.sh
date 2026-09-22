@@ -3,7 +3,7 @@ _SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-${(%):-%x}}")" && pwd)"
 REPO_ROOT="${REPO_ROOT:-$(cd "${_SCRIPT_DIR}/.." && pwd)}"
 OUT_ROOT="${OUT_ROOT:-${REPO_ROOT}/results}"
 SCORES_ROOT="${SCORES_ROOT:-${REPO_ROOT}/scores}"
-CONDA_ENV="${CONDA_ENV:-chall}"
+CONDA_ENV="${CONDA_ENV:-ggd}"
 
 MODEL_LLAVA="${MODEL_LLAVA:-${REPO_ROOT}/data/models/llava-v1.5-7b}"
 MODEL_QWEN3="${MODEL_QWEN3:-${REPO_ROOT}/data/models/Qwen3-VL-8B-Instruct}"
@@ -88,12 +88,12 @@ for pkg in ("nltk", "pycocotools", "pycocoevalcap", "google.protobuf", "tiktoken
 PY
 }
 
-# Qwen3 / InternVL CHAIR writers use: chall_alpha{alpha}_{method_name}.jsonl
-chall_caption_path() {
+# Qwen3 / InternVL CHAIR writers use: ggd_alpha{alpha}_{method_name}.jsonl
+ggd_caption_path() {
   local out_dir="$1"
   local alpha="$2"
   local method="$3"
-  echo "${out_dir}/chall_alpha${alpha}_${method}.jsonl"
+  echo "${out_dir}/ggd_alpha${alpha}_${method}.jsonl"
 }
 
 run_chair_metrics() {

@@ -1,4 +1,4 @@
-name: chall
+name: ggd
 channels:
   - conda-forge
 dependencies:

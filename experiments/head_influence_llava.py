@@ -25,7 +25,7 @@ from llava.constants import IMAGE_TOKEN_INDEX, DEFAULT_IMAGE_TOKEN
 from transformers import AutoTokenizer
 
 from causal_core.models.llava_sampling import evolve_only_sampling
-from causal_core.eval_common import load_c_scores
+from causal_core.eval_common import load_eic_scores
 
 warnings.filterwarnings("ignore")
 logging.basicConfig(level=logging.INFO, format="[%(asctime)s] %(message)s",
@@ -53,9 +53,9 @@ def main():
     torch.manual_seed(args.seed)
     random.seed(args.seed)
 
-    C = load_c_scores(args.scores_path, args.enhance_layer_index).float()
+    C = load_eic_scores(args.scores_path, args.enhance_layer_index).float()
     n_heads = int(C.shape[0])
-    log.info(f"C-scores at L{args.enhance_layer_index}: nonzero={int((C > 0).sum())}/{n_heads}")
+    log.info(f"EIC scores at L{args.enhance_layer_index}: nonzero={int((C > 0).sum())}/{n_heads}")
     log.info(f"Top-5 heads by C: {C.argsort(descending=True)[:5].tolist()}")
 
     log.info(f"Loading LLaVA: {args.model_path}")
@@ -199,7 +199,7 @@ def main():
         "model": "LLaVA-v1.5-7B",
         "layer": args.enhance_layer_index,
         "method": "contrastive_correction",
-        "C_scores": C_np.tolist(),
+        "eic_scores": C_np.tolist(),
         "n_generative": int(len(gen_deltas)),
         "n_yesno": int(len(yn_deltas)),
         "gen_mean_delta": gen_mean.tolist(),

@@ -3,7 +3,7 @@
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-ENV_NAME="${1:-chall}"
+ENV_NAME="${1:-ggd}"
 
 if ! command -v conda >/dev/null 2>&1; then
   echo "ERROR: conda is required. Load Anaconda module first on the cluster." >&2

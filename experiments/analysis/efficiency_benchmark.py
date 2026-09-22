@@ -29,7 +29,7 @@ def parse_args():
     p.add_argument("--model_path", type=str, default=str(REPO / "data/models/llava-v1.5-7b"))
     p.add_argument("--data_path", type=str, default=str(REPO / "data/coco/val2014"))
     p.add_argument("--anno_path", type=str, default=str(REPO / "data/coco/annotations/instances_val2014.json"))
-    p.add_argument("--c_scores_path", type=str, default=str(REPO / "scores/llava_eic.pt"))
+    p.add_argument("--eic_scores_path", type=str, default=str(REPO / "scores/llava_eic.pt"))
     p.add_argument("--layer_index", type=int, default=1)
     p.add_argument("--alpha", type=float, default=0.7)
     p.add_argument("--num_eval_samples", type=int, default=50)
@@ -230,14 +230,14 @@ def main():
     )
     print(f"[data] {len(images_meta)} CHAIR images (seed={image_seed})")
 
-    payload = torch.load(args.c_scores_path, map_location="cpu", weights_only=False)
+    payload = torch.load(args.eic_scores_path, map_location="cpu", weights_only=False)
     if isinstance(payload, dict):
-        c_scores = payload.get("C", payload.get("scores", next(iter(payload.values()))))
+        eic_scores = payload.get("C", payload.get("scores", next(iter(payload.values()))))
     else:
-        c_scores = payload
-    if c_scores.dim() == 2:
-        c_scores = c_scores[args.layer_index]
-    c_scores = c_scores.float()
+        eic_scores = payload
+    if eic_scores.dim() == 2:
+        eic_scores = eic_scores[args.layer_index]
+    eic_scores = eic_scores.float()
 
     results = {}
 
@@ -290,16 +290,16 @@ def main():
                                         images_meta, args, gen_only)
     results["ONLY"] = dict(times=times_only, peak_mem_gib=mem_only)
 
-    monitor = CausalMonitor(model, args.layer_index, c_scores, img_start=35, img_len=576)
+    monitor = CausalMonitor(model, args.layer_index, eic_scores, img_start=35, img_len=576)
     orig_fwd = monitor.install_qk_hook()
     proc = CausalLogitsProcessor(monitor, alpha=args.alpha)
-    def gen_chall(image, _):
+    def gen_ggd(image, _):
         return dict(images=image, images_pos=None, images_neg=None,
                     use_only=False, enhance_layer_index=args.layer_index,
                     **common)
     print("\n[run] Ours (Causal)")
     times_s, mem_s = time_method("Ours", model, tokenizer, image_processor,
-                                  images_meta, args, gen_chall, logits_processor=proc)
+                                  images_meta, args, gen_ggd, logits_processor=proc)
     monitor.restore(orig_fwd)
     results["Ours"] = dict(times=times_s, peak_mem_gib=mem_s)
 

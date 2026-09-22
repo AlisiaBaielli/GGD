@@ -47,14 +47,14 @@ def main():
     elif "scores" in payload:
         C = payload["scores"].float()
     else:
-        raise ValueError(f"Cannot find C-scores in {args.scores_path}")
+        raise ValueError(f"Cannot find EIC scores in {args.scores_path}")
 
     cmin, cmax = C.min(), C.max()
     if cmax > cmin:
         C = (C - cmin) / (cmax - cmin)
 
     num_heads = C.shape[0]
-    print(f"C-scores at L{args.enhance_layer_index}: {C.tolist()}")
+    print(f"EIC scores at L{args.enhance_layer_index}: {C.tolist()}")
     print(f"Nonzero: {(C > 0).sum().item()}/{num_heads}")
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -191,14 +191,14 @@ def main():
     print(f"{'='*60}")
     print(f"Generative prompts: {len(gen_deltas)}")
     print(f"Yes/No prompts:     {len(yn_deltas)}")
-    print(f"C-scores (L{args.enhance_layer_index}): min={C_np.min():.3f} mean={C_np.mean():.3f} max={C_np.max():.3f}")
+    print(f"EIC scores (L{args.enhance_layer_index}): min={C_np.min():.3f} mean={C_np.mean():.3f} max={C_np.max():.3f}")
     print(f"Nonzero C heads: {np.where(C_np > 0)[0].tolist()}")
 
     gen_mean = gen_deltas.mean(axis=0) if len(gen_deltas) > 0 else np.zeros(num_heads)
     yn_mean = yn_deltas.mean(axis=0) if len(yn_deltas) > 0 else np.zeros(num_heads)
 
     print(f"\n--- Per-head mean correction strength (||real - CD||) ---")
-    print(f"{'Head':>4}  {'C-score':>7}  {'Gen delta':>9}  {'YN delta':>9}")
+    print(f"{'Head':>4}  {'EIC score':>7}  {'Gen delta':>9}  {'YN delta':>9}")
     for h in range(num_heads):
         print(f"{h:4d}  {C_np[h]:7.3f}  {gen_mean[h]:9.4f}  {yn_mean[h]:9.4f}")
 
@@ -214,7 +214,7 @@ def main():
     else:
         r_yn, p_yn, rho_yn, p_rho_yn = 0, 1, 0, 1
 
-    print(f"\n--- Correlation: C-score vs correction strength ---")
+    print(f"\n--- Correlation: EIC score vs correction strength ---")
     print(f"Generative:  Pearson r={r_gen:.4f} (p={p_gen:.4f}), Spearman rho={rho_gen:.4f} (p={p_rho_gen:.4f})")
     print(f"Yes/No:      Pearson r={r_yn:.4f} (p={p_yn:.4f}), Spearman rho={rho_yn:.4f} (p={p_rho_yn:.4f})")
 
@@ -239,7 +239,7 @@ def main():
         print(f"Yes/No:      high-C mean={yn_high_mean:.4f}, low-C mean={yn_low_mean:.4f}, SNR={yn_snr:.2f}")
 
     output = {
-        'C_scores': C_np.tolist(),
+        'eic_scores': C_np.tolist(),
         'scores_path': args.scores_path,
         'enhance_layer': args.enhance_layer_index,
         'num_generative': len(gen_deltas),

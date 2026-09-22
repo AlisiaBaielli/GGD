@@ -66,7 +66,7 @@ def main():
     p.add_argument("--temperature", type=float, default=1.0)
     p.add_argument("--top_p", type=float, default=1.0)
     p.add_argument("--do_sample", type=bool, default=True)
-    p.add_argument("--c_scores_path", type=str, required=True)
+    p.add_argument("--eic_scores_path", type=str, required=True)
     p.add_argument("--layer_index", type=int, default=0)
     p.add_argument("--alpha", type=float, default=0.3)
     p.add_argument("--type", type=str, default="random")
@@ -99,24 +99,24 @@ def main():
     # blow-ups (CUDA OOM) on InternVL's high-resolution dynamic tiling, so we
     # keep the default memory-efficient sdpa kernel for all methods.
 
-    payload = torch.load(args.c_scores_path, map_location="cpu")
+    payload = torch.load(args.eic_scores_path, map_location="cpu")
     if isinstance(payload, dict):
-        c_scores = payload.get("scores", payload.get("C", None))
-        if c_scores is None:
-            c_scores = next(iter(payload.values()))
+        eic_scores = payload.get("scores", payload.get("C", None))
+        if eic_scores is None:
+            eic_scores = next(iter(payload.values()))
     else:
-        c_scores = payload
-    if c_scores.dim() == 2:
-        c_scores = c_scores[args.layer_index]
-    c_scores = c_scores.float()
-    log.info(f"C-scores: {c_scores.shape}, nonzero={int((c_scores>0).sum())}/{len(c_scores)}")
+        eic_scores = payload
+    if eic_scores.dim() == 2:
+        eic_scores = eic_scores[args.layer_index]
+    eic_scores = eic_scores.float()
+    log.info(f"EIC scores: {eic_scores.shape}, nonzero={int((eic_scores>0).sum())}/{len(eic_scores)}")
 
     monitor = None
     if args.no_hook:
         log.info("NO HOOK mode -- vanilla run through same script")
         processors = LogitsProcessorList([])
     else:
-        monitor = CausalMonitorInternVL(model, args.layer_index, c_scores, image_token_id)
+        monitor = CausalMonitorInternVL(model, args.layer_index, eic_scores, image_token_id)
         monitor.install_hook()
         causal_processor = CausalLogitsProcessor(monitor, alpha=args.alpha)
         processors = LogitsProcessorList([causal_processor])

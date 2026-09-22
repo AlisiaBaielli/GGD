@@ -1,5 +1,5 @@
 """
-MMBench evaluation for Qwen3-VL-8B-Instruct (vanilla / CHALL / ONLY / VCD / M3ID).
+MMBench evaluation for Qwen3-VL-8B-Instruct (vanilla / GGD / ONLY / VCD / M3ID).
 """
 import argparse, os, json, math, re, io, base64, logging, sys
 from pathlib import Path
@@ -76,8 +76,8 @@ def parse_args():
                    help="CircularEval: test all option rotations")
     p.add_argument("--single_pred_prompt", action="store_true", default=True)
     p.add_argument("--method", type=str, required=True,
-                   choices=["vanilla", "only", "only_eic", "chall", "vcd", "m3id"])
-    p.add_argument("--c_scores_path", type=str, default=str(REPO / "scores/qwen3_eic.pt"))
+                   choices=["vanilla", "only", "only_eic", "ggd", "vcd", "m3id"])
+    p.add_argument("--eic_scores_path", type=str, default=str(REPO / "scores/qwen3_eic.pt"))
     p.add_argument("--noise_step", type=int, default=500)
     p.add_argument("--cd_alpha", type=float, default=1.0)
     p.add_argument("--cd_beta", type=float, default=0.1)
@@ -109,18 +109,18 @@ def main():
 
     if args.method == "only_eic":
         from causal_core.only_eic import inject_eic_for_only
-        inject_eic_for_only(model=model, scores_path=args.c_scores_path,
+        inject_eic_for_only(model=model, scores_path=args.eic_scores_path,
                             layer_index=args.layer_index, pure_eic=False, require_match=False)
 
     monitor = None
     processors = LogitsProcessorList()
-    if args.method == "chall":
-        payload = torch.load(args.c_scores_path, map_location="cpu")
-        c_scores = payload.get("C", payload.get("scores", next(iter(payload.values()))))
-        if c_scores.dim() == 2:
-            c_scores = c_scores[args.layer_index]
-        c_scores = c_scores.float()
-        monitor = CausalMonitorQwen3(model, args.layer_index, c_scores, image_token_id)
+    if args.method == "ggd":
+        payload = torch.load(args.eic_scores_path, map_location="cpu")
+        eic_scores = payload.get("C", payload.get("scores", next(iter(payload.values()))))
+        if eic_scores.dim() == 2:
+            eic_scores = eic_scores[args.layer_index]
+        eic_scores = eic_scores.float()
+        monitor = CausalMonitorQwen3(model, args.layer_index, eic_scores, image_token_id)
         monitor.install_hook()
         processors = LogitsProcessorList([CausalLogitsProcessor(monitor, alpha=args.alpha)])
 

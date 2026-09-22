@@ -9,10 +9,10 @@ def _resolve_attn(model, layer_index):
         return model.language_model.layers[layer_index].self_attn
     return model.model.layers[layer_index].self_attn
 
-def install_eic_suppress(model, layer_index, c_scores):
+def install_eic_suppress(model, layer_index, eic_scores):
     attn = _resolve_attn(model, layer_index)
     n_heads = int(getattr(attn.config, "num_attention_heads"))
-    head_mask = (c_scores.float() > 0).float()
+    head_mask = (eic_scores.float() > 0).float()
     attn._eic_head_mask = head_mask
 
     def _pre_hook(module, args, kwargs):
@@ -35,20 +35,8 @@ def restore_eic_suppress(model, layer_index, handle):
     if handle is not None:
         handle.remove()
 
-def load_c_scores(c_scores_path: str, layer_index: int) -> torch.Tensor:
-    payload = torch.load(c_scores_path, map_location="cpu", weights_only=False)
-    if isinstance(payload, dict):
-        c = payload.get("C", payload.get("scores"))
-        if c is None:
-            c = next(iter(payload.values()))
-    else:
-        c = payload
-    if c.dim() == 2:
-        c = c[layer_index]
-    return c.float()
-
-def load_c_scores(c_scores_path: str, layer_index: int) -> torch.Tensor:
-    payload = torch.load(c_scores_path, map_location="cpu", weights_only=False)
+def load_eic_scores(eic_scores_path: str, layer_index: int) -> torch.Tensor:
+    payload = torch.load(eic_scores_path, map_location="cpu", weights_only=False)
     if isinstance(payload, dict):
         c = payload.get("C", payload.get("scores"))
         if c is None:

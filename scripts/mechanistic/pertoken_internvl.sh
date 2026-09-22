@@ -15,7 +15,7 @@ python experiments/pertoken_analysis_internvl.py \
   --model_path "${MODEL_INTERNVL}" \
   --data_path "${COCO_DIR}/val2014" \
   --anno_path "${COCO_DIR}/annotations/instances_val2014.json" \
-  --c_scores_path "${SCORES}" \
+  --eic_scores_path "${SCORES}" \
   --layer_index 1 \
   --alpha 0.7 \
   --num_eval_samples "${NSAMP:-500}" \

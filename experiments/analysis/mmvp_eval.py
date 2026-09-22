@@ -40,15 +40,15 @@ def parse_args():
     p.add_argument("--seed", type=int, default=3407)
     p.add_argument("--model_path", type=str, default=str(REPO / "data/models/llava-v1.5-7b"))
     p.add_argument("--out_path", type=str, required=True)
-    p.add_argument("--c_scores_path", type=str, required=True)
+    p.add_argument("--eic_scores_path", type=str, required=True)
     p.add_argument("--layer_index", type=int, default=1)
     p.add_argument("--alpha", type=float, default=0.7)
     p.add_argument("--img_start", type=int, default=35)
     p.add_argument("--img_len", type=int, default=576)
     p.add_argument("--max_new_tokens", type=int, default=20)
-    p.add_argument("--method_name", type=str, default="chall")
+    p.add_argument("--method_name", type=str, default="ggd")
     p.add_argument("--use_only", action="store_true",
-                   help="Run ONLY baseline instead of CHALL.")
+                   help="Run ONLY baseline instead of GGD.")
     p.add_argument("--only_alpha_pos", type=float, default=3.0)
     p.add_argument("--only_alpha_neg", type=float, default=1.0)
     p.add_argument("--only_beta", type=float, default=0.1)
@@ -123,14 +123,14 @@ def main():
         questions = questions[:args.limit]
     log.info(f"[data] {len(questions)} questions, images in {img_dir}")
 
-    payload = torch.load(args.c_scores_path, map_location="cpu", weights_only=False)
+    payload = torch.load(args.eic_scores_path, map_location="cpu", weights_only=False)
     if isinstance(payload, dict):
-        c_scores = payload.get("C", payload.get("scores", next(iter(payload.values()))))
+        eic_scores = payload.get("C", payload.get("scores", next(iter(payload.values()))))
     else:
-        c_scores = payload
-    if c_scores.dim() == 2:
-        c_scores = c_scores[args.layer_index]
-    c_scores = c_scores.float()
+        eic_scores = payload
+    if eic_scores.dim() == 2:
+        eic_scores = eic_scores[args.layer_index]
+    eic_scores = eic_scores.float()
 
     causal_processor = None
     if args.use_only:
@@ -144,11 +144,11 @@ def main():
             f"[ASCD active] alpha={args.ascd_alpha} beta={args.ascd_beta}"
         )
     elif args.alpha > 0:
-        monitor = CausalMonitor(model, args.layer_index, c_scores,
+        monitor = CausalMonitor(model, args.layer_index, eic_scores,
                                img_start=args.img_start, img_len=args.img_len)
         monitor.install_qk_hook()
         causal_processor = CausalLogitsProcessor(monitor, alpha=args.alpha)
-        log.info(f"[CHALL active] layer={args.layer_index} alpha={args.alpha}")
+        log.info(f"[GGD active] layer={args.layer_index} alpha={args.alpha}")
     else:
         log.info("[Vanilla mode]")
 

@@ -17,7 +17,7 @@ mkdir -p "${OUT}/chair" "${OUT}/pope" "${OUT}/mme"
 
 # CHAIR (long-form): writes ${OUT}/chair/eic_suppress.jsonl
 python experiments/ablations/eic_suppress_chair.py \
-  --model_path "${MODEL_LLAVA}" --c_scores_path "${SCORES}" --layer_index "${LAYER}" \
+  --model_path "${MODEL_LLAVA}" --eic_scores_path "${SCORES}" --layer_index "${LAYER}" \
   --data_path "${COCO_DIR}/val2014" \
   --anno_path "${COCO_DIR}/annotations/instances_val2014.json" \
   --num_eval_samples "${NCHAIR}" --out_path "${OUT}/chair"
@@ -25,14 +25,14 @@ run_chair_metrics "${OUT}/chair/eic_suppress.jsonl" "${OUT}/chair_results.json"
 
 # POPE (random split)
 python experiments/ablations/eic_suppress_pope.py \
-  --model_path "${MODEL_LLAVA}" --c_scores_path "${SCORES}" --layer_index "${LAYER}" \
+  --model_path "${MODEL_LLAVA}" --eic_scores_path "${SCORES}" --layer_index "${LAYER}" \
   --data_path "${COCO_DIR}/val2014" \
   --pope_path "${POPE_DIR}/coco_pope_${POPE_TYPE}.json" \
   --type "${POPE_TYPE}" --dataset_name coco --out_path "${OUT}/pope"
 
 # MME (scored with the in-repo scorer)
 python experiments/ablations/eic_suppress_mme.py \
-  --model_path "${MODEL_LLAVA}" --c_scores_path "${SCORES}" --layer_index "${LAYER}" \
+  --model_path "${MODEL_LLAVA}" --eic_scores_path "${SCORES}" --layer_index "${LAYER}" \
   --image_folder "${MME_IMAGE_DIR}" --question_file "${MME_QUESTIONS}" \
   --answers_file "${OUT}/mme/eic_suppress.jsonl"
 python eval/mme_score.py --answers_file "${OUT}/mme/eic_suppress.jsonl" \

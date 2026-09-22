@@ -31,7 +31,7 @@ def inject_eic_for_only(
     require_match: bool = True,
 ) -> int:
     """
-    Attach offline C-scores for ONLY c_head_select at ``layer_index``.
+    Attach offline EIC scores for ONLY c_head_select at ``layer_index``.
 
     When ``pure_eic=True`` (ONLY+EIC ablation), high-EIC heads (C>0) are zeroed
     in the CD branch instead of the default ratio-lambda*C rule.
@@ -48,7 +48,7 @@ def inject_eic_for_only(
 
     if require_match and layer_idx != chosen_layer:
         raise ValueError(
-            f"C-score layer mismatch: calibrated at {chosen_layer}, target {layer_idx}"
+            f"EIC score layer mismatch: calibrated at {chosen_layer}, target {layer_idx}"
         )
 
     c = payload["C"]

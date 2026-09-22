@@ -5,7 +5,7 @@
 #     model : llava | qwen3 | internvl
 #     bench : chair | pope | amber | mme | mmvp | mmbench
 #
-# Methods (decode-time): vanilla, vcd, m3id, only, only_eic (LLaVA/Qwen3 only), chall (=Ours).
+# Methods (decode-time): vanilla, vcd, m3id, only, only_eic (LLaVA/Qwen3 only), ggd (=Ours).
 # Set SKIP_EXISTING=1 to resume after partial runs.
 set -uo pipefail
 
@@ -49,20 +49,20 @@ if [[ ! -f "${SCORES}" ]]; then
   exit 1
 fi
 
-# Decode-time method set (override with e.g. METHODS="vanilla chall")
+# Decode-time method set (override with e.g. METHODS="vanilla ggd")
 METHODS_REQUESTED="${METHODS:-}"
 if [[ -n "${METHODS:-}" ]]; then
   read -r -a METHODS <<< "${METHODS}"
 else
   METHODS=(vanilla vcd m3id only)
   [[ "${HAS_EIC}" == "1" ]] && METHODS+=(only_eic)
-  METHODS+=(chall)
+  METHODS+=(ggd)
   [[ "${MODEL}" == "llava" ]] && METHODS+=(ascd)
 fi
 
 for method in "${METHODS[@]}"; do
   case "${method}" in
-    vanilla|vcd|m3id|only|chall) ;;
+    vanilla|vcd|m3id|only|ggd) ;;
     only_eic)
       [[ "${HAS_EIC}" == "1" ]] || {
         echo "Method only_eic is not supported for ${MODEL}" >&2
@@ -83,10 +83,10 @@ for method in "${METHODS[@]}"; do
 done
 
 # Flags that select the decoding method in the benchmark scripts.
-# --c_scores_path is required by the Qwen3/InternVL scripts, so we always pass it
-# (it is only *used* by chall and only_eic; --no_hook disables the monitor).
+# --eic_scores_path is required by the Qwen3/InternVL scripts, so we always pass it
+# (it is only *used* by ggd and only_eic; --no_hook disables the monitor).
 method_flags() {
-  local base="--c_scores_path ${SCORES} --layer_index ${LAYER}"
+  local base="--eic_scores_path ${SCORES} --layer_index ${LAYER}"
   local attention=""
   [[ "${RECORD_EFFICIENCY}" == "1" && "${MODEL}" == "llava" ]] \
     && attention="--attn_implementation eager"
@@ -96,7 +96,7 @@ method_flags() {
     m3id)     echo "${base} --no_hook --use_m3id ${attention}" ;;
     only)     echo "${base} --no_hook --use_only ${attention}" ;;
     only_eic) echo "${base} --no_hook --use_only --use_eic_heads" ;;
-    chall)    echo "${base} --alpha ${ALPHA}" ;;
+    ggd)    echo "${base} --alpha ${ALPHA}" ;;
     ascd)
       echo "${base} --no_hook --use_ascd --ascd_alpha 1.0 --ascd_beta 0.1"
       ;;
@@ -179,9 +179,9 @@ cap_methods() {
   if [[ -n "${METHODS_REQUESTED}" ]]; then
     echo "${METHODS_REQUESTED}"
   elif [[ "${MODEL}" == "llava" ]]; then
-    echo vanilla vcd only chall ascd
+    echo vanilla vcd only ggd ascd
   else
-    echo vanilla vcd only chall
+    echo vanilla vcd only ggd
   fi
 }
 # CAP_LIMIT (optional): cap #questions for cheap validation; empty = full set.
@@ -200,12 +200,12 @@ run_mmvp() {
       vanilla)  extra+=" --alpha 0" ;;
       vcd)      extra+=" --use_vcd" ;;
       only)     extra+=" --use_only" ;;
-      chall)    extra+=" --alpha ${ALPHA}" ;;
+      ggd)    extra+=" --alpha ${ALPHA}" ;;
       ascd)     extra+=" --use_ascd --ascd_alpha 1.0 --ascd_beta 0.1" ;;
     esac
     echo "=== ${MODEL} MMVP ${m} ==="
     if python "experiments/analysis/mmvp_$(cap_suffix).py" --model_path "${MPATH}" \
-      --c_scores_path "${SCORES}" --layer_index "${LAYER}" --out_path "${out}" ${extra}; then
+      --eic_scores_path "${SCORES}" --layer_index "${LAYER}" --out_path "${out}" ${extra}; then
       CAP_OK=$((CAP_OK+1))
     else
       echo "FAILED ${m}"; CAP_FAIL=$((CAP_FAIL+1))
@@ -220,7 +220,7 @@ run_mmbench() {
     skip_done "${out}/mmbench_${m}.json" && { echo "skip ${m}"; continue; }
     echo "=== ${MODEL} MMBench ${m} ==="
     if python "experiments/analysis/mmbench_$(cap_suffix).py" --model_path "${MPATH}" \
-      --question_file "${tsv}" --c_scores_path "${SCORES}" --layer_index "${LAYER}" \
+      --question_file "${tsv}" --eic_scores_path "${SCORES}" --layer_index "${LAYER}" \
       --alpha "${ALPHA}" --method "${m}" --out_dir "${out}" $(cap_limit_flag); then
       CAP_OK=$((CAP_OK+1))
     else
@@ -250,7 +250,7 @@ echo "================ ${MODEL} ${BENCH} table ================"
 BASE="${BASE}" BENCH="${BENCH}" python - <<'PY'
 import json, os, glob
 base = os.environ["BASE"]; bench = os.environ["BENCH"]
-methods = ["vanilla", "vcd", "m3id", "only", "only_eic", "chall", "ascd"]
+methods = ["vanilla", "vcd", "m3id", "only", "only_eic", "ggd", "ascd"]
 def jload(p):
     try:
         return json.load(open(p))
@@ -288,13 +288,13 @@ elif bench == "mme":
         print(f"{m:<10}{d.get('mme_total',0):11.2f}{d.get('perception_total',0):10.2f}{d.get('cognition_total',0):11.2f}")
 elif bench == "mmvp":
     print(f"{'method':<10}{'Single%':>9}{'Pair%':>9}")
-    for m in ["vanilla","vcd","only","chall","ascd"]:
+    for m in ["vanilla","vcd","only","ggd","ascd"]:
         d = jload(os.path.join(base, m, f"{m}_summary.json"))
         if not d: continue
         print(f"{m:<10}{d.get('single_acc',0)*100:9.2f}{d.get('pair_acc',0)*100:9.2f}")
 elif bench == "mmbench":
     print(f"{'method':<10}{'Acc%':>9}")
-    for m in ["vanilla","vcd","only","chall","ascd"]:
+    for m in ["vanilla","vcd","only","ggd","ascd"]:
         d = jload(os.path.join(base, m, f"mmbench_{m}.json"))
         if not d: continue
         print(f"{m:<10}{d.get('accuracy',0):9.2f}")

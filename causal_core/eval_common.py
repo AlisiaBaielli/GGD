@@ -66,33 +66,33 @@ def import_vcd_baseline(model: str):
         raise ValueError(f"unknown model for VCD import: {model}")
     return contrastive_generate, add_diffusion_noise
 
-def load_c_scores(
+def load_eic_scores(
     scores_path: str,
     layer_index: Optional[int] = None,
 ) -> torch.Tensor:
-    """Load per-head C/EIC scores from a calibration checkpoint."""
+    """Load per-head EIC scores from a calibration checkpoint."""
     payload = torch.load(scores_path, map_location="cpu")
     if isinstance(payload, dict):
-        c_scores = payload.get("C", payload.get("scores", None))
-        if c_scores is None:
-            c_scores = next(v for v in payload.values() if torch.is_tensor(v))
+        eic_scores = payload.get("C", payload.get("scores", None))
+        if eic_scores is None:
+            eic_scores = next(v for v in payload.values() if torch.is_tensor(v))
         if layer_index is None and "chosen_layer" in payload:
             layer_index = int(payload["chosen_layer"])
     else:
-        c_scores = payload
+        eic_scores = payload
 
-    if not torch.is_tensor(c_scores):
-        c_scores = torch.tensor(c_scores)
+    if not torch.is_tensor(eic_scores):
+        eic_scores = torch.tensor(eic_scores)
 
-    if c_scores.dim() == 2:
+    if eic_scores.dim() == 2:
         if layer_index is None:
             raise ValueError("layer_index required for multi-layer score tensors")
-        c_scores = c_scores[layer_index]
+        eic_scores = eic_scores[layer_index]
 
-    return c_scores.float()
+    return eic_scores.float()
 
 def resolve_method(args) -> Tuple[str, bool]:
-    """Return (method_name, needs_c_scores) from CLI flags."""
+    """Return (method_name, needs_eic_scores) from CLI flags."""
     if getattr(args, "use_ascd", False):
         return "ascd", False
     if getattr(args, "use_only", False):
@@ -105,7 +105,7 @@ def resolve_method(args) -> Tuple[str, bool]:
         return "m3id", False
     if getattr(args, "no_hook", False):
         return "vanilla", False
-    return "chall", True
+    return "ggd", True
 
 def validate_method_flags(args) -> None:
     names = ("use_only", "use_vcd", "use_m3id", "use_ascd")

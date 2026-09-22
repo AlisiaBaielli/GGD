@@ -60,14 +60,14 @@ def parse_args():
     p.add_argument("--out_path", type=str, required=True)
     p.add_argument("--num_eval_samples", type=int, default=500)
     p.add_argument("--max_new_tokens", type=int, default=128)
-    p.add_argument("--c_scores_path", type=str, required=True)
+    p.add_argument("--eic_scores_path", type=str, required=True)
     p.add_argument("--layer_index", type=int, default=0)
     p.add_argument("--alpha", type=float, default=0.3,
                    help="Max temperature reduction when ungrounded")
     p.add_argument("--do_sample", type=str2bool, default=True)
     p.add_argument("--temperature", type=float, default=1.0)
     p.add_argument("--top_p", type=float, default=1.0)
-    p.add_argument("--method_name", type=str, default="chall")
+    p.add_argument("--method_name", type=str, default="ggd")
     p.add_argument("--record_efficiency", action="store_true")
     p.add_argument("--no_hook", action="store_true",
                    help="Disable causal hook (vanilla run through same script)")
@@ -112,17 +112,17 @@ def main():
 
     evolve_only_sampling_internvl()
 
-    payload = torch.load(args.c_scores_path, map_location="cpu")
+    payload = torch.load(args.eic_scores_path, map_location="cpu")
     if isinstance(payload, dict):
-        c_scores = payload.get("scores", payload.get("C", None))
-        if c_scores is None:
-            c_scores = next(iter(payload.values()))
+        eic_scores = payload.get("scores", payload.get("C", None))
+        if eic_scores is None:
+            eic_scores = next(iter(payload.values()))
     else:
-        c_scores = payload
-    if c_scores.dim() == 2:
-        c_scores = c_scores[args.layer_index]
-    c_scores = c_scores.float()
-    log.info(f"C-scores: {c_scores.shape}, nonzero={int((c_scores>0).sum())}/{len(c_scores)}")
+        eic_scores = payload
+    if eic_scores.dim() == 2:
+        eic_scores = eic_scores[args.layer_index]
+    eic_scores = eic_scores.float()
+    log.info(f"EIC scores: {eic_scores.shape}, nonzero={int((eic_scores>0).sum())}/{len(eic_scores)}")
 
     monitor = None
     if args.no_hook:
@@ -131,7 +131,7 @@ def main():
     elif getattr(args, 'use_vcd', False) or getattr(args, 'use_m3id', False):
         processors = LogitsProcessorList([])
     else:
-        monitor = CausalMonitorInternVL(model, args.layer_index, c_scores, image_token_id)
+        monitor = CausalMonitorInternVL(model, args.layer_index, eic_scores, image_token_id)
         monitor.install_hook()
         causal_processor = CausalLogitsProcessor(monitor, alpha=args.alpha)
         processors = LogitsProcessorList([causal_processor])
@@ -149,11 +149,11 @@ def main():
 
     output_jsonl = os.path.join(
         args.out_path,
-        f"chall_alpha{args.alpha}_{args.method_name}.jsonl",
+        f"ggd_alpha{args.alpha}_{args.method_name}.jsonl",
     )
     output_time = os.path.join(
         args.out_path,
-        f"chall_alpha{args.alpha}_{args.method_name}_time.txt",
+        f"ggd_alpha{args.alpha}_{args.method_name}_time.txt",
     )
     open(output_jsonl, "w").close()
     open(output_time, "w").close()

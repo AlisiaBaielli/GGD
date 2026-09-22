@@ -19,12 +19,12 @@ python experiments/chair/internvl.py \
   --data_path "${COCO_DIR}/val2014" \
   --anno_path "${COCO_DIR}/annotations/instances_val2014.json" \
   --out_path "${OUT}" \
-  --c_scores_path "${SCORES}" \
+  --eic_scores_path "${SCORES}" \
   --layer_index "${LAYER}" \
   --alpha "${ALPHA}" \
   --num_eval_samples "${NSAMP:-500}" \
-  --method_name "chall_L${LAYER}"
+  --method_name "ggd_L${LAYER}"
 
-CAP="$(chall_caption_path "${OUT}" "${ALPHA}" "chall_L${LAYER}")"
+CAP="$(ggd_caption_path "${OUT}" "${ALPHA}" "ggd_L${LAYER}")"
 run_chair_metrics "${CAP}" "${OUT}/chair_results.json"
 echo "[done] InternVL layer ${LAYER}"

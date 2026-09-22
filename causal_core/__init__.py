@@ -1,4 +1,4 @@
-"""Causal Decode-Time Steering for Hallucination Mitigation in Vision-Language Models.
+"""Grounding-Guided Decoding for vision-language models.
 
 """
 from causal_core.monitor import (

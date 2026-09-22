@@ -25,7 +25,7 @@ from causal_core.models.llava_sampling import evolve_only_sampling
 from pope_loader import POPEDataSet
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from _eic_suppress_core import install_eic_suppress, restore_eic_suppress, load_c_scores
+from _eic_suppress_core import install_eic_suppress, restore_eic_suppress, load_eic_scores
 
 warnings.filterwarnings("ignore")
 logging.basicConfig(level=logging.INFO, format="[%(asctime)s] %(message)s",
@@ -70,7 +70,7 @@ def main():
     p.add_argument("--temperature", type=float, default=1.0)
     p.add_argument("--top_p", type=float, default=1.0)
     p.add_argument("--do_sample", type=bool, default=True)
-    p.add_argument("--c_scores_path", type=str, required=True)
+    p.add_argument("--eic_scores_path", type=str, required=True)
     p.add_argument("--layer_index", type=int, default=1)
     p.add_argument("--type", type=str, default="random")
     p.add_argument("--dataset_name", type=str, default="coco")
@@ -85,8 +85,8 @@ def main():
     tokenizer, model, image_processor, context_len = load_pretrained_model(
         model_path, None, model_name)
 
-    c_scores = load_c_scores(args.c_scores_path, args.layer_index)
-    orig_fwd, head_mask = install_eic_suppress(model, args.layer_index, c_scores)
+    eic_scores = load_eic_scores(args.eic_scores_path, args.layer_index)
+    orig_fwd, head_mask = install_eic_suppress(model, args.layer_index, eic_scores)
     log.info(f"[EIC-suppress] layer={args.layer_index}  kept heads={int(head_mask.sum())}/{len(head_mask)}")
 
     pope_dataset = POPEDataSet(pope_path=args.pope_path, data_path=args.data_path,

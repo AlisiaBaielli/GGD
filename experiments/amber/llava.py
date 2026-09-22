@@ -29,7 +29,7 @@ from llava.mm_utils import tokenizer_image_token
 from llava.model import LlavaLlamaForCausalLM
 
 from causal_core.eval_common import (
-    load_c_scores,
+    load_eic_scores,
     resolve_method,
     validate_method_flags,
 )
@@ -57,7 +57,7 @@ def parse_args():
     p.add_argument("--amber_image_dir", type=str, required=True)
     p.add_argument("--output_file", type=str, required=True)
     p.add_argument("--max_new_tokens", type=int, default=128)
-    p.add_argument("--c_scores_path", type=str, default=None)
+    p.add_argument("--eic_scores_path", type=str, default=None)
     p.add_argument("--layer_index", type=int, default=1)
     p.add_argument("--alpha", type=float, default=0.7)
     p.add_argument("--img_start", type=int, default=35)
@@ -95,13 +95,13 @@ def main():
     method, needs_scores = resolve_method(args)
     # `--method_name` is an output label only (the answer path is explicit via
     # --output_file); decoding behavior must key off the canonical `method`.
-    if needs_scores and not args.c_scores_path:
-        raise ValueError(f"--c_scores_path is required for method={method}")
+    if needs_scores and not args.eic_scores_path:
+        raise ValueError(f"--eic_scores_path is required for method={method}")
 
     tokenizer = AutoTokenizer.from_pretrained(args.model_path, use_fast=False)
-    # CHALL's grounding monitor needs real attention weights (output_attentions),
-    # which the sdpa kernel returns as None; force eager for chall only.
-    attn_impl = "eager" if method in ("chall", "ascd") else "sdpa"
+    # GGD's grounding monitor needs real attention weights (output_attentions),
+    # which the sdpa kernel returns as None; force eager for ggd only.
+    attn_impl = "eager" if method in ("ggd", "ascd") else "sdpa"
     model = LlavaLlamaForCausalLM.from_pretrained(
         args.model_path, torch_dtype=torch.float16, device_map="auto",
         attn_implementation=attn_impl,
@@ -128,14 +128,14 @@ def main():
     layer_for_only = args.layer_index
 
     if needs_scores:
-        c_scores = load_c_scores(args.c_scores_path, args.layer_index)
+        eic_scores = load_eic_scores(args.eic_scores_path, args.layer_index)
         log.info(
-            f"C-scores layer={args.layer_index}: "
-            f"nonzero={int((c_scores > 0).sum())}/{len(c_scores)}"
+            f"EIC scores layer={args.layer_index}: "
+            f"nonzero={int((eic_scores > 0).sum())}/{len(eic_scores)}"
         )
-        if method == "chall":
+        if method == "ggd":
             monitor = CausalMonitor(
-                model, args.layer_index, c_scores,
+                model, args.layer_index, eic_scores,
                 img_start=args.img_start, img_len=args.img_len,
             )
             orig_fwd = monitor.install_qk_hook()
@@ -145,7 +145,7 @@ def main():
         elif method == "only_eic":
             layer_for_only = inject_eic_for_only(
                 model=model,
-                scores_path=args.c_scores_path,
+                scores_path=args.eic_scores_path,
                 layer_index=args.layer_index,
                 pure_eic=True,
             )
