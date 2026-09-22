@@ -11,9 +11,9 @@ import torch
 from scipy.stats import wilcoxon
 from tqdm import tqdm
 
-from causal_core.envs import ENV_LIST_K7, BaseExample, EnvMaker
-from causal_core.models import llava_adapter
-from causal_core.scores import tver_from_attn
+from ggd.envs import ENV_LIST_K7, BaseExample, EnvMaker
+from ggd.models import llava_adapter
+from ggd.scores import tver_from_attn
 
 
 IMAGE_ENVIRONMENTS = ("img_mismatch", "mask", "appearance")

@@ -19,7 +19,7 @@ sys.path.insert(0, str(REPO))
 
 import numpy as np
 import torch
-from causal_core.eval_common import excluded_image_ids, select_image_files
+from ggd.eval_common import excluded_image_ids, select_image_files
 
 warnings.filterwarnings("ignore")
 
@@ -199,9 +199,9 @@ def main():
     from llava.constants import IMAGE_TOKEN_INDEX, DEFAULT_IMAGE_TOKEN
     from transformers import AutoTokenizer
     from transformers.generation.logits_process import LogitsProcessorList
-    from causal_core.models.llava_sampling import evolve_only_sampling
-    from causal_core.vcd import add_diffusion_noise
-    from causal_core.monitor import CausalMonitor, CausalLogitsProcessor
+    from ggd.models.llava_sampling import evolve_only_sampling
+    from ggd.vcd import add_diffusion_noise
+    from ggd.monitor import CausalMonitor, CausalLogitsProcessor
 
     torch.manual_seed(args.seed); torch.cuda.manual_seed_all(args.seed)
     random.seed(args.seed); np.random.seed(args.seed)

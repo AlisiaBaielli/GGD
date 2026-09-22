@@ -13,9 +13,10 @@ sys.path.insert(0, str(REPO))
 
 from transformers import AutoProcessor, InternVLForConditionalGeneration
 from transformers.generation.logits_process import LogitsProcessorList
-from causal_core.models.internvl import evolve_only_sampling_internvl
+from ggd.eval_common import load_eic_scores
+from ggd.models.internvl import evolve_only_sampling_internvl
 
-from causal_core.monitor import CausalMonitorInternVL, CausalLogitsProcessor, parse_image_id
+from ggd.monitor import CausalMonitorInternVL, CausalLogitsProcessor, parse_image_id
 
 warnings.filterwarnings("ignore")
 logging.basicConfig(level=logging.INFO, format="[%(asctime)s] %(message)s",
@@ -191,8 +192,7 @@ def main():
 
     evolve_only_sampling_internvl()
 
-    payload = torch.load(args.eic_scores_path, map_location="cpu", weights_only=False)
-    eic_scores = payload["C"].float()
+    eic_scores = load_eic_scores(args.eic_scores_path, args.layer_index)
     log.info(f"EIC scores at L{args.layer_index}: nonzero={int((eic_scores>0).sum())}/{eic_scores.shape[0]}")
 
     monitor = CausalMonitorInternVL(model, args.layer_index, eic_scores, image_token_id)

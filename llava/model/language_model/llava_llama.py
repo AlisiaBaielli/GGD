@@ -19,7 +19,7 @@ import torch
 import torch.nn as nn
 from torch.nn import CrossEntropyLoss
 
-from causal_core.transformers_fork import ensure_llama_fork
+from ggd.transformers_fork import ensure_llama_fork
 ensure_llama_fork()
 
 from transformers import AutoConfig, AutoModelForCausalLM, LlamaConfig

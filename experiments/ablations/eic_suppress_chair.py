@@ -20,7 +20,7 @@ from llava.conversation import conv_templates
 from llava.mm_utils import tokenizer_image_token
 from llava.constants import IMAGE_TOKEN_INDEX, DEFAULT_IMAGE_TOKEN
 from transformers import AutoTokenizer
-from causal_core.models.llava_sampling import evolve_only_sampling
+from ggd.models.llava_sampling import evolve_only_sampling
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from _eic_suppress_core import install_eic_suppress, restore_eic_suppress, load_eic_scores

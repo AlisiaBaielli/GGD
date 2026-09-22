@@ -28,18 +28,18 @@ from llava.conversation import Conversation, SeparatorStyle
 from llava.mm_utils import tokenizer_image_token
 from llava.model import LlavaLlamaForCausalLM
 
-from causal_core.eval_common import (
+from ggd.eval_common import (
     load_eic_scores,
     resolve_method,
     validate_method_flags,
 )
-from causal_core.models.llava_sampling import (
+from ggd.models.llava_sampling import (
     evolve_only_sampling,
     install_ascd_llava15,
 )
-from causal_core.monitor import CausalLogitsProcessor, CausalMonitor
-from causal_core.only_eic import inject_eic_for_only
-from causal_core.vcd import add_diffusion_noise
+from ggd.monitor import CausalLogitsProcessor, CausalMonitor
+from ggd.only_eic import inject_eic_for_only
+from ggd.vcd import add_diffusion_noise
 
 warnings.filterwarnings("ignore")
 logging.basicConfig(

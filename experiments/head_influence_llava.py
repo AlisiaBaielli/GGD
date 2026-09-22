@@ -24,8 +24,8 @@ from llava.mm_utils import tokenizer_image_token
 from llava.constants import IMAGE_TOKEN_INDEX, DEFAULT_IMAGE_TOKEN
 from transformers import AutoTokenizer
 
-from causal_core.models.llava_sampling import evolve_only_sampling
-from causal_core.eval_common import load_eic_scores
+from ggd.models.llava_sampling import evolve_only_sampling
+from ggd.eval_common import load_eic_scores
 
 warnings.filterwarnings("ignore")
 logging.basicConfig(level=logging.INFO, format="[%(asctime)s] %(message)s",

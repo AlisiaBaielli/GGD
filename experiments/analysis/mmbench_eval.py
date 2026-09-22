@@ -21,11 +21,11 @@ from llava.model import LlavaLlamaForCausalLM
 from llava.mm_utils import tokenizer_image_token, process_images
 from transformers import AutoTokenizer
 from transformers.generation.logits_process import LogitsProcessorList
-from causal_core.models.llava_sampling import (
+from ggd.models.llava_sampling import (
     evolve_only_sampling,
     install_ascd_llava15,
 )
-from causal_core.vcd import add_diffusion_noise
+from ggd.vcd import add_diffusion_noise
 
 from PIL import Image
 import io, base64, logging
@@ -136,7 +136,7 @@ def main():
     use_only = (args.method == "only")
 
     if args.method == "ggd":
-        from causal_core.monitor import CausalMonitor, CausalLogitsProcessor
+        from ggd.monitor import CausalMonitor, CausalLogitsProcessor
         payload = torch.load(args.eic_scores_path, map_location="cpu")
         eic_scores = payload.get("C", payload.get("scores", next(iter(payload.values()))))
         if eic_scores.dim() == 2:

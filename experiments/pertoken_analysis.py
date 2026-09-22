@@ -18,14 +18,14 @@ from llava.conversation import conv_templates
 from llava.mm_utils import tokenizer_image_token, get_model_name_from_path
 from llava.constants import IMAGE_TOKEN_INDEX, DEFAULT_IMAGE_TOKEN
 from transformers import AutoTokenizer
-from causal_core.models.llava_sampling import evolve_only_sampling
+from ggd.models.llava_sampling import evolve_only_sampling
 
 warnings.filterwarnings("ignore")
 logging.basicConfig(level=logging.INFO, format="[%(asctime)s] %(message)s",
                     datefmt="%Y-%m-%d %H:%M:%S")
 log = logging.getLogger(__name__)
 
-from causal_core.monitor import CausalMonitor, CausalLogitsProcessor
+from ggd.monitor import CausalMonitor, CausalLogitsProcessor
 
 class GroundingLogger(CausalLogitsProcessor):
 

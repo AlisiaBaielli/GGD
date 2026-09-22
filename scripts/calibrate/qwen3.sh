@@ -9,7 +9,7 @@ setup_cluster
 
 CALIB_JSONL="${COCO_DIR}/calibration.jsonl"
 if [ ! -f "${CALIB_JSONL}" ]; then
-  python -m causal_core.make_calibration_jsonl \
+  python -m ggd.make_calibration_jsonl \
     --instances "${COCO_DIR}/annotations/instances_val2014.json" \
     --out "${CALIB_JSONL}" --n 8000
 fi
@@ -17,7 +17,7 @@ fi
 RAW="${SCORES_ROOT}/qwen3_raw.pt"
 ZSCORE="${SCORES_ROOT}/qwen3_eic.pt"
 
-python -m causal_core.calibrate \
+python -m ggd.calibrate \
   --model_name "${MODEL_QWEN3}" \
   --model_type qwen3 \
   --question_file "${CALIB_JSONL}" \
@@ -28,7 +28,7 @@ python -m causal_core.calibrate \
   --amp_dtype bf16 \
   --out "${RAW}"
 
-python -m causal_core.apply_zscore_filter \
+python -m ggd.apply_zscore_filter \
   --input "${RAW}" \
   --output "${ZSCORE}"
 

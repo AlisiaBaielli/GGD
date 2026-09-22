@@ -20,7 +20,7 @@ esac
 
 CALIB_JSONL="${COCO_DIR}/calibration.jsonl"
 if [ ! -f "${CALIB_JSONL}" ]; then
-  python -m causal_core.make_calibration_jsonl \
+  python -m ggd.make_calibration_jsonl \
     --instances "${COCO_DIR}/annotations/instances_val2014.json" \
     --out "${CALIB_JSONL}" --n 8000
 fi
@@ -34,7 +34,7 @@ ALPHA=0.7
 if [[ "${SKIP_CALIB:-0}" == "1" && -f "${ZSCORE}" ]]; then
   echo "Reusing existing calibration scores: ${ZSCORE}"
 else
-  python -m causal_core.calibrate \
+  python -m ggd.calibrate \
     --model_name "${MODEL_INTERNVL}" \
     --model_type internvl \
     --n_samples "${NSAMP:-8000}" \
@@ -45,7 +45,7 @@ else
     --variance_mode env_per_example \
     --out "${RAW}"
 
-  python -m causal_core.apply_zscore_filter --input "${RAW}" --output "${ZSCORE}"
+  python -m ggd.apply_zscore_filter --input "${RAW}" --output "${ZSCORE}"
 fi
 
 OUT="${OUT_ROOT}/k_ablation/internvl_K${K}"

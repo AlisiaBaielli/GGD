@@ -1,16 +1,16 @@
 """Grounding-Guided Decoding for vision-language models.
 
 """
-from causal_core.monitor import (
+from ggd.monitor import (
     CausalMonitor,
     CausalMonitorQwen3,
     CausalMonitorInternVL,
     CausalLogitsProcessor,
 )
-from causal_core.grounding import compute_grounding_score_batched
-from causal_core.sharpening import sharpen_logits
-from causal_core.scores import tver_from_attn, compute_C, choose_intervention_layer
-from causal_core.apply_zscore_filter import apply_zscore_filter
+from ggd.grounding import compute_grounding_score_batched
+from ggd.sharpening import sharpen_logits
+from ggd.scores import tver_from_attn, compute_C, choose_intervention_layer
+from ggd.apply_zscore_filter import apply_zscore_filter
 
 __all__ = [
     "CausalMonitor",

@@ -10,7 +10,7 @@ setup_cluster
 CALIB_JSONL="${CALIB_JSONL:-${COCO_DIR}/calibration.jsonl}"
 N_SAMPLES="${N_SAMPLES:-8000}"
 if [ ! -f "${CALIB_JSONL}" ]; then
-  python -m causal_core.make_calibration_jsonl \
+  python -m ggd.make_calibration_jsonl \
     --instances "${COCO_DIR}/annotations/instances_val2014.json" \
     --out "${CALIB_JSONL}" --n "${N_SAMPLES}"
 fi
@@ -18,7 +18,7 @@ fi
 RAW="${RAW:-${SCORES_ROOT}/llava_raw.pt}"
 ZSCORE="${ZSCORE:-${SCORES_ROOT}/llava_eic.pt}"
 
-python -m causal_core.calibrate \
+python -m ggd.calibrate \
   --model_name "${MODEL_LLAVA}" \
   --model_type llava \
   --question_file "${CALIB_JSONL}" \
@@ -28,7 +28,7 @@ python -m causal_core.calibrate \
   --variance_mode env_per_example \
   --out "${RAW}"
 
-python -m causal_core.apply_zscore_filter \
+python -m ggd.apply_zscore_filter \
   --input "${RAW}" \
   --output "${ZSCORE}"
 

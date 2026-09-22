@@ -8,7 +8,7 @@ from pathlib import Path
 import torch
 from scipy.stats import pearsonr, spearmanr
 
-from causal_core.apply_zscore_filter import apply_zscore_filter
+from ggd.apply_zscore_filter import apply_zscore_filter
 
 
 def write_jsonl(path: str, records: list[dict]) -> None:

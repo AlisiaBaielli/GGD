@@ -8,8 +8,6 @@
 #SBATCH --cpus-per-task=8
 #SBATCH --time=10:00:00
 # Working dir defaults to the SLURM submission directory; submit from the repo root.
-#SBATCH --output=slurm/%x_%j.out
-#SBATCH --error=slurm/%x_%j.err
 
 set -uo pipefail
 source scripts/_env.sh

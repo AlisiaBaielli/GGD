@@ -26,11 +26,11 @@ python -m pip install -r "${REPO_ROOT}/requirements.txt"
 
 export REPO_ROOT
 export PYTHONPATH="${REPO_ROOT}:${REPO_ROOT}/transformers/src"
-export PYTHONSTARTUP="${REPO_ROOT}/causal_core/_python_startup.py"
+export PYTHONSTARTUP="${REPO_ROOT}/ggd/_python_startup.py"
 
 echo ""
 echo "Done. Activate with:"
 echo "  conda activate ${ENV_NAME}"
 echo "  export PYTHONPATH=\"\$(pwd):\$(pwd)/transformers/src:\${PYTHONPATH:-}\""
-echo "  export PYTHONSTARTUP=\"\$(pwd)/causal_core/_python_startup.py\""
+echo "  export PYTHONSTARTUP=\"\$(pwd)/ggd/_python_startup.py\""
 echo "Or source scripts/_env.sh from any run script."

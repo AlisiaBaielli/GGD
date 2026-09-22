@@ -1,5 +1,5 @@
 """
-causal_core/monitor.py
+ggd/monitor.py
 """
 import math
 import os
@@ -7,8 +7,8 @@ import re
 import logging
 
 import torch
-from causal_core.grounding import compute_grounding_score_batched
-from causal_core.sharpening import sharpen_logits
+from ggd.grounding import compute_grounding_score_batched
+from ggd.sharpening import sharpen_logits
 
 log = logging.getLogger(__name__)
 

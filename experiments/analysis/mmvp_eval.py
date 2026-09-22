@@ -23,12 +23,12 @@ from llava.constants import IMAGE_TOKEN_INDEX, DEFAULT_IMAGE_TOKEN
 from transformers import AutoTokenizer
 from transformers.generation.logits_process import LogitsProcessorList
 
-from causal_core.monitor import CausalMonitor, CausalLogitsProcessor
-from causal_core.models.llava_sampling import (
+from ggd.monitor import CausalMonitor, CausalLogitsProcessor
+from ggd.models.llava_sampling import (
     evolve_only_sampling,
     install_ascd_llava15,
 )
-from causal_core.vcd import add_diffusion_noise
+from ggd.vcd import add_diffusion_noise
 
 warnings.filterwarnings("ignore")
 logging.basicConfig(level=logging.INFO, format="[%(asctime)s] %(message)s",

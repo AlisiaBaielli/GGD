@@ -36,12 +36,12 @@ chair.pkl
 /docs/
 
 # Local exploratory code not included in the reproducibility release
-/causal_core/attention_maps.py
-/causal_core/causal_selection.py
-/causal_core/head_ablation.py
-/causal_core/head_patching.py
-/causal_core/image_corruptions.py
-/causal_core/spatial_grounding.py
+/ggd/attention_maps.py
+/ggd/causal_selection.py
+/ggd/head_ablation.py
+/ggd/head_patching.py
+/ggd/image_corruptions.py
+/ggd/spatial_grounding.py
 
 /experiments/*.sbatch
 /experiments/analyze_*.py

@@ -13,7 +13,7 @@ transformers/src/transformers/models/llama/modeling_llama.py
   EIC-selected intervention layer.
 - **Qwen3-VL-8B** and **InternVL3.5-8B-HF** ship with their own modelling code that already
   exposes the required attention tensors. We use the stock transformers package and
-  install hooks at runtime (see `causal_core/hooks.py`) — no source-level patch needed.
+  install hooks at runtime (see `ggd/hooks.py`) — no source-level patch needed.
 
 ## Applying the patch
 

@@ -9,7 +9,7 @@ REPO = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(REPO / "transformers" / "src"))
 sys.path.insert(0, str(REPO))
 
-from causal_core.transformers_fork import ensure_internvl_fork
+from ggd.transformers_fork import ensure_internvl_fork
 ensure_internvl_fork()
 
 import torch
@@ -22,9 +22,9 @@ from transformers.models.internvl.modeling_internvl_real import (
     InternVLForConditionalGeneration,
 )
 
-from causal_core.eval_common import excluded_image_ids, select_image_files
-from causal_core.models.internvl import evolve_only_sampling_internvl
-from causal_core.monitor import (
+from ggd.eval_common import excluded_image_ids, select_image_files
+from ggd.models.internvl import evolve_only_sampling_internvl
+from ggd.monitor import (
     CausalLogitsProcessor,
     CausalMonitorInternVL,
     parse_image_id,
@@ -125,7 +125,7 @@ def main():
     log.info(f"EIC scores: {eic_scores.shape}, nonzero={int((eic_scores>0).sum())}/{len(eic_scores)}")
 
     monitor = None
-    if args.no_hook:
+    if args.no_hook or args.use_only:
         log.info("NO HOOK mode -- vanilla / ONLY run through same script")
         processors = LogitsProcessorList([])
     elif getattr(args, 'use_vcd', False) or getattr(args, 'use_m3id', False):
@@ -198,7 +198,7 @@ def main():
             torch.cuda.reset_peak_memory_stats()
         t1 = time.perf_counter()
         if getattr(args, 'use_vcd', False) or getattr(args, 'use_m3id', False):
-            from causal_core.eval_common import import_vcd_baseline
+            from ggd.eval_common import import_vcd_baseline
             contrastive_generate, add_diffusion_noise = import_vcd_baseline("internvl")
             neg_inputs = {k: v.clone() if isinstance(v, torch.Tensor) else v for k, v in inputs.items()}
             if args.use_vcd:

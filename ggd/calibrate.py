@@ -12,17 +12,17 @@ from contextlib import nullcontext
 import torch
 from tqdm import tqdm
 
-from causal_core.envs import EnvMaker, BaseExample, ENV_LIST_DEFAULT
-from causal_core.scores import RunningStats, tver_from_attn, compute_C, choose_intervention_layer
-from causal_core.models import internvl as internvl_adapter
+from ggd.envs import EnvMaker, BaseExample, ENV_LIST_DEFAULT
+from ggd.scores import RunningStats, tver_from_attn, compute_C, choose_intervention_layer
+from ggd.models import internvl as internvl_adapter
 
 def pick_adapter(name: str):
     name = name.lower()
     if name == "llava":
-        from causal_core.models import llava_adapter
+        from ggd.models import llava_adapter
         return llava_adapter
     if name in {"qwen", "qwen3", "qwen-vl-3", "qwen3-vl"}:
-        from causal_core.models import qwen3_adapter
+        from ggd.models import qwen3_adapter
         return qwen3_adapter
     raise ValueError(f"Unsupported model_type: {name}")
 

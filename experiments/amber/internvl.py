@@ -8,7 +8,7 @@ from tqdm import tqdm
 REPO = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(REPO))
 
-from causal_core.transformers_fork import ensure_internvl_fork
+from ggd.transformers_fork import ensure_internvl_fork
 ensure_internvl_fork()
 
 import torch
@@ -19,8 +19,8 @@ from transformers import AutoProcessor
 from transformers.models.internvl.modeling_internvl_real import InternVLForConditionalGeneration
 from transformers.generation.logits_process import LogitsProcessorList
 
-from causal_core.models.internvl import evolve_only_sampling_internvl
-from causal_core.monitor import CausalMonitorInternVL, CausalLogitsProcessor
+from ggd.models.internvl import evolve_only_sampling_internvl
+from ggd.monitor import CausalMonitorInternVL, CausalLogitsProcessor
 
 warnings.filterwarnings("ignore")
 logging.basicConfig(level=logging.INFO, format="[%(asctime)s] %(message)s",
@@ -98,9 +98,9 @@ def main():
 
     monitor = None
     processors = LogitsProcessorList([])
-    if args.no_hook:
+    if args.no_hook or args.use_only:
         log.info("NO HOOK mode -- vanilla / ONLY run through same script")
-    elif getattr(args, 'use_vcd', False) or getattr(args, 'use_m3id', False):
+    elif args.use_vcd or args.use_m3id:
         pass
     else:
         monitor = CausalMonitorInternVL(model, args.layer_index, eic_scores, image_token_id)
@@ -144,7 +144,7 @@ def main():
         try:
             with torch.inference_mode():
                 if getattr(args, "use_vcd", False) or getattr(args, "use_m3id", False):
-                    from causal_core.eval_common import import_vcd_baseline
+                    from ggd.eval_common import import_vcd_baseline
                     contrastive_generate, add_diffusion_noise = import_vcd_baseline("internvl")
                     neg_inputs = {k: v.clone() if isinstance(v, torch.Tensor) else v for k, v in inputs.items()}
                     if args.use_vcd:

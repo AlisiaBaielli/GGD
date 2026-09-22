@@ -10,6 +10,8 @@
 #   DRY=1 bash .../submit_all.sh                        # print, do not submit
 set -uo pipefail
 cd "$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+source scripts/_env.sh
+mkdir -p "${OUT_ROOT}/slurm"
 
 MODELS="${MODELS:-llava qwen3 internvl}"
 BENCHES="${BENCHES:-chair pope amber mme}"
@@ -26,6 +28,8 @@ submit() {  # name kind model bench [extra sbatch args...]
   local name="$1" kind="$2" model="$3" bench="$4"; shift 4
   local t="${TIME[${bench:-quality}]:-10:00:00}"
   local args=(--partition="${PART}" --job-name="${name}" --time="${t}"
+              --output="${OUT_ROOT}/slurm/%x_%j.out"
+              --error="${OUT_ROOT}/slurm/%x_%j.err"
               --export="ALL,RKIND=${kind},RMODEL=${model},RBENCH=${bench},SKIP_EXISTING=${SKIP_EXISTING}"
               "$@" "${JOB}")
   if [[ "${DRY}" == "1" ]]; then echo "sbatch ${args[*]}"; echo "DRYRUN_${name}"; return 0; fi
@@ -37,8 +41,10 @@ for model in ${MODELS}; do
   for bench in ${BENCHES}; do
     out="$(submit "repro_${model}_${bench}" bench "${model}" "${bench}")"
     echo "${out}"
-    jid="$(echo "${out}" | grep -oE '[0-9]+' | tail -1)"
-    [[ "${bench}" == "chair" ]] && CHAIR_JOBID[${model}]="${jid}"
+    if [[ "${DRY}" != "1" ]]; then
+      jid="$(echo "${out}" | grep -oE '[0-9]+' | tail -1)"
+      [[ "${bench}" == "chair" ]] && CHAIR_JOBID[${model}]="${jid}"
+    fi
   done
 done
 

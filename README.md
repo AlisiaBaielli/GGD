@@ -22,13 +22,14 @@ GGD reduces object hallucination across LLaVA-v1.5-7B, Qwen3-VL-8B-Instruct, and
 ```bash
 bash scripts/setup_env.sh
 conda activate ggd
+source scripts/_env.sh
 ```
 
 The release uses Python 3.10 and installs the dependencies in `requirements.txt`. Model and dataset locations can be overridden in `scripts/_env.sh`.
 
-## Data preparation
+## Data and model layout
 
-The default directory layout is:
+Place model weights and benchmark data in the following default locations:
 
 ```text
 data/
@@ -38,11 +39,18 @@ data/
 │   └── InternVL3_5-8B-HF/
 ├── coco/
 │   ├── annotations/
-│   └── val2014/
+│   ├── val2014/
+│   └── calibration.jsonl
 ├── POPE/
+│   └── coco/
 ├── AMBER/
+│   ├── image/
+│   └── AMBER/
 ├── MME/
+│   ├── MME_Benchmark_release_version/
+│   └── test_merged_final.jsonl
 └── mmbench/
+    └── mmbench_dev_20230712.tsv
 ```
 
 Datasets and model weights are not redistributed.
@@ -73,7 +81,6 @@ For example:
 
 ```bash
 bash scripts/reproduce/run.sh llava chair
-METHODS="vanilla ggd ascd" bash scripts/reproduce/run.sh llava chair
 ```
 
 Submit the complete SLURM evaluation grid with:
@@ -82,12 +89,12 @@ Submit the complete SLURM evaluation grid with:
 bash scripts/reproduce/submit_all.sh
 ```
 
-ASCD evaluation is available for LLaVA. Outputs are written to `results/`.
+Outputs are written to `results/`.
 
 ## Analysis
 
 ```bash
-python experiments/analysis/grounding_trend.py --help
+python experiments/analysis/grounding_trend.py
 python experiments/analysis/environment_validity.py --help
 python experiments/analysis/calibration_stability.py --help
 python experiments/analysis/bootstrap_ci.py --help
@@ -98,4 +105,6 @@ These scripts reproduce the grounding–hallucination trend, environment validat
 
 ## Acknowledgements
 
-Third-party components and baseline implementations are documented in [NOTICE](NOTICE). This anonymous release is distributed under the [MIT License](LICENSE).
+This implementation builds on [LLaVA](https://github.com/haotian-liu/LLaVA) and [Hugging Face Transformers](https://github.com/huggingface/transformers). Baseline implementations are adapted from their official releases and remain subject to their original licenses.
+
+Original code is distributed under the [MIT License](LICENSE).

@@ -20,7 +20,7 @@ MME_IMAGE_DIR="${MME_IMAGE_DIR:-${MME_DIR}/MME_Benchmark_release_version/MME_Ben
 MME_QUESTIONS="${MME_QUESTIONS:-${MME_DIR}/test_merged_final.jsonl}"
 
 export PYTHONPATH="${REPO_ROOT}:${REPO_ROOT}/transformers/src:${PYTHONPATH:-}"
-export PYTHONSTARTUP="${REPO_ROOT}/causal_core/_python_startup.py"
+export PYTHONSTARTUP="${REPO_ROOT}/ggd/_python_startup.py"
 export PYTORCH_CUDA_ALLOC_CONF="${PYTORCH_CUDA_ALLOC_CONF:-expandable_segments:True}"
 
 setup_env() {
@@ -52,7 +52,7 @@ setup_cluster() {
     fi
   fi
   export PYTHONPATH="${REPO_ROOT}:${REPO_ROOT}/transformers/src:${PYTHONPATH:-}"
-  export PYTHONSTARTUP="${REPO_ROOT}/causal_core/_python_startup.py"
+  export PYTHONSTARTUP="${REPO_ROOT}/ggd/_python_startup.py"
 }
 
 require_transformers_v5() {

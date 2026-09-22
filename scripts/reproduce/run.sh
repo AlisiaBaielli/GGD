@@ -68,6 +68,11 @@ for method in "${METHODS[@]}"; do
         echo "Method only_eic is not supported for ${MODEL}" >&2
         exit 2
       }
+      if [[ "${MODEL}" == "llava" ]] \
+        && [[ "${BENCH}" == "mmvp" || "${BENCH}" == "mmbench" ]]; then
+        echo "Method only_eic is not supported for LLaVA ${BENCH}" >&2
+        exit 2
+      fi
       ;;
     ascd)
       [[ "${MODEL}" == "llava" ]] || {
@@ -200,6 +205,7 @@ run_mmvp() {
       vanilla)  extra+=" --alpha 0" ;;
       vcd)      extra+=" --use_vcd" ;;
       only)     extra+=" --use_only" ;;
+      only_eic) extra+=" --use_only --use_eic_heads" ;;
       ggd)    extra+=" --alpha ${ALPHA}" ;;
       ascd)     extra+=" --use_ascd --ascd_alpha 1.0 --ascd_beta 0.1" ;;
     esac

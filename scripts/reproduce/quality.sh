@@ -23,7 +23,7 @@ COCO_IMG="${COCO_DIR}/val2014"
 COCO_ANNO="${COCO_DIR}/annotations/instances_val2014.json"
 
 pairs=()
-for m in vanilla vcd m3id only only_eic ggd; do
+for m in vanilla vcd m3id only only_eic ggd ascd; do
   cap="$(ls -t "${CHAIR_BASE}/${m}"/*.jsonl 2>/dev/null | head -1)"
   [[ -n "${cap}" ]] && pairs+=("${m}:${cap}")
 done

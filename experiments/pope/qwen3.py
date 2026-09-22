@@ -9,7 +9,7 @@ REPO = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(REPO))
 sys.path.insert(0, str(REPO / "eval"))
 
-from causal_core.transformers_fork import ensure_qwen3_vl_fork
+from ggd.transformers_fork import ensure_qwen3_vl_fork
 ensure_qwen3_vl_fork()
 
 import torch
@@ -19,8 +19,8 @@ from qwen_vl_utils import process_vision_info
 
 from transformers import AutoProcessor
 from transformers.models.qwen3_vl.modeling_qwen3_vl import Qwen3VLForConditionalGeneration
-from causal_core.models.qwen3 import evolve_only_sampling_qwen3
-from causal_core.monitor import CausalMonitorQwen3, CausalLogitsProcessor
+from ggd.models.qwen3 import evolve_only_sampling_qwen3
+from ggd.monitor import CausalMonitorQwen3, CausalLogitsProcessor
 
 warnings.filterwarnings("ignore")
 logging.basicConfig(level=logging.INFO, format="[%(asctime)s] %(message)s",
@@ -104,7 +104,7 @@ def main():
     log.info(f"EIC scores: {eic_scores.shape}, nonzero={int((eic_scores>0).sum())}/{len(eic_scores)}")
 
     if args.use_only and args.use_eic_heads:
-        from causal_core.only_eic import inject_eic_for_only
+        from ggd.only_eic import inject_eic_for_only
         inject_eic_for_only(
             model=model, scores_path=args.eic_scores_path,
             layer_index=args.layer_index, pure_eic=False, require_match=False,
@@ -150,7 +150,7 @@ def main():
 
         with torch.inference_mode():
             if getattr(args, "use_vcd", False) or getattr(args, "use_m3id", False):
-                from causal_core.eval_common import import_vcd_baseline
+                from ggd.eval_common import import_vcd_baseline
                 contrastive_generate, add_diffusion_noise = import_vcd_baseline("qwen3")
                 neg_inputs = {k: v.clone() if isinstance(v, torch.Tensor) else v for k, v in inputs.items()}
                 if args.use_vcd:

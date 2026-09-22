@@ -26,7 +26,7 @@ def apply_zscore_filter(mean: torch.Tensor, var: torch.Tensor) -> torch.Tensor:
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--input", required=True, help="Raw .pt from compute_scores.py")
+    ap.add_argument("--input", required=True, help="Raw calibration checkpoint")
     ap.add_argument("--output", required=True, help="Output .pt with z-score filtered C")
     args = ap.parse_args()
 
