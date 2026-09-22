@@ -11,7 +11,7 @@ PERCEPTION = ["existence", "count", "position", "color", "posters", "celebrity",
               "scene", "landmark", "artwork", "OCR"]
 COGNITION = ["commonsense_reasoning", "numerical_calculation",
              "text_translation", "code_reasoning"]
-# Thesis MME "total (out of 800)" = the 4 object-hallucination categories only.
+# Reported MME total (out of 800) uses four object-hallucination categories.
 HALLUCINATION = ["existence", "count", "position", "color"]
 
 
@@ -90,7 +90,7 @@ def main():
 
     perception_total = round(sum(per_cat[c]["score"] for c in PERCEPTION if c in per_cat), 2)
     cognition_total = round(sum(per_cat[c]["score"] for c in COGNITION if c in per_cat), 2)
-    # Thesis-reported MME total: existence + count + position + color, out of 800.
+    # Reported total: existence + count + position + color, out of 800.
     hallucination_total = round(sum(per_cat[c]["score"] for c in HALLUCINATION if c in per_cat), 2)
 
     summary = {
@@ -110,7 +110,7 @@ def main():
                 print(f"{c:<26} {d['acc']:>7} {d['acc_plus']:>7} {d['score']:>8}")
     print(f"{'PERCEPTION TOTAL':<26} {'':>7} {'':>7} {perception_total:>8}")
     print(f"{'COGNITION TOTAL':<26} {'':>7} {'':>7} {cognition_total:>8}")
-    print(f"{'MME TOTAL (thesis, /800)':<26} {'':>7} {'':>7} {hallucination_total:>8}")
+    print(f"{'MME TOTAL (reported, /800)':<26} {'':>7} {'':>7} {hallucination_total:>8}")
 
     if args.out_path:
         with open(args.out_path, "w") as f:

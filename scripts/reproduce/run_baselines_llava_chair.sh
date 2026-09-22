@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Reproduce all five decode-time baselines + Ours (chall) on LLaVA CHAIR.
-# Thesis settings: seed 3407, n=500, max_new_tokens=128, layer=1, alpha=0.7.
+# Reported settings: seed 3407, n=500, max_new_tokens=128, layer=1, alpha=0.7.
 set -euo pipefail
 
 if [[ -n "${SLURM_SUBMIT_DIR:-}" ]]; then

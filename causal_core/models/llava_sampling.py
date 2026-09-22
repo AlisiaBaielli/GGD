@@ -1,8 +1,10 @@
-"""Patched sample() for LLaVA generation supporting ONLY, VCD, M3ID, and RITUAL.
+"""Patched LLaVA sampling for ONLY, VCD, M3ID, RITUAL, and ASCD.
 
 Adapted from Wan et al.'s ONLY codebase (https://github.com/zifuwan/ONLY).
 VCD: Leng et al., CVPR 2024 (https://github.com/DAMO-NLP-SG/VCD).
 M3ID: Favero et al., CVPR 2024 (https://arxiv.org/abs/2403.14003).
+ASCD: Wang et al. (https://github.com/BroJunn/ASCD), Apache-2.0,
+upstream commit 70034c32edf2bcadb8aae57da2c4eaed82fab3e6.
 """
 import copy
 import warnings
@@ -20,6 +22,67 @@ from transformers.generation.stopping_criteria import (
     validate_stopping_criteria,
 )
 import transformers
+
+ASCD_HEADS = (
+    (5, 15), (31, 27), (0, 5), (10, 17), (27, 15), (15, 11),
+    (31, 4), (12, 31), (13, 8), (15, 25), (19, 16), (0, 26),
+    (22, 26), (24, 6), (17, 15), (31, 0), (9, 27), (16, 15),
+    (8, 1), (31, 31), (23, 1), (27, 12), (29, 29), (26, 13),
+    (15, 4), (27, 17), (31, 13), (23, 11), (26, 9), (30, 17),
+    (12, 6), (24, 27),
+)
+
+
+def install_ascd_llava15(model, image_start=35, image_length=576):
+    base = model.get_model() if hasattr(model, "get_model") else model
+    layers = getattr(base, "layers", None)
+    if layers is None and hasattr(base, "model"):
+        layers = getattr(base.model, "layers", None)
+    if layers is None or len(layers) != 32:
+        raise ValueError("ASCD requires the 32-layer LLaVA-1.5-7B model")
+
+    heads_by_layer = {}
+    for layer_idx, head_idx in ASCD_HEADS:
+        heads_by_layer.setdefault(layer_idx, []).append(head_idx)
+
+    for layer_idx, layer in enumerate(layers):
+        attn = layer.self_attn
+        if int(attn.config.num_attention_heads) != 32:
+            raise ValueError("ASCD requires 32 attention heads")
+        mask = torch.zeros(32, dtype=torch.bool)
+        mask[heads_by_layer.get(layer_idx, [])] = True
+        attn._ascd_enabled = True
+        attn._ascd_branch_id = 0
+        attn._ascd_head_mask = mask
+        attn._ascd_image_start = int(image_start)
+        attn._ascd_image_length = int(image_length)
+    return len(layers)
+
+
+def set_ascd_branch(model, branch_id):
+    if branch_id not in (0, 1):
+        raise ValueError(f"Invalid ASCD branch: {branch_id}")
+    modules = [
+        module
+        for module in model.modules()
+        if getattr(module, "_ascd_enabled", False)
+    ]
+    if not modules:
+        raise RuntimeError("ASCD is not installed")
+    for module in modules:
+        module._ascd_branch_id = branch_id
+
+
+def ascd_contrastive_logits(logits, contrastive_logits, alpha=1.0, beta=0.1):
+    if beta <= 0:
+        raise ValueError("ASCD beta must be positive")
+    cutoff = torch.log(
+        torch.tensor(beta, dtype=logits.dtype, device=logits.device)
+    )
+    cutoff = cutoff + logits.max(dim=-1, keepdim=True).values
+    combined = (1.0 + alpha) * logits - alpha * contrastive_logits
+    return combined.masked_fill(logits < cutoff, -float("inf"))
+
 
 try:
     from transformers.generation.utils import SampleEncoderDecoderOutput, SampleOutput
@@ -331,7 +394,7 @@ def _sample_llava(
     streamer=None,
     **model_kwargs,
 ):
-    """Transformers >=5 _sample hook with ONLY / VCD / M3ID / RITUAL support."""
+    """Transformers >=5 sampling with local baselines and pinned ASCD."""
     pad_token_id = generation_config._pad_token_tensor
     output_attentions = generation_config.output_attentions
     output_hidden_states = generation_config.output_hidden_states
@@ -353,6 +416,11 @@ def _sample_llava(
     this_peer_finished = False
     model_kwargs_pos = _isolated_branch_kwargs(model_kwargs)
     model_kwargs_neg = _isolated_branch_kwargs(model_kwargs)
+    model_kwargs_ascd = (
+        _isolated_branch_kwargs(model_kwargs)
+        if model_kwargs.get("use_ascd")
+        else None
+    )
     t = 0
     total_overlapping_index_len = []
 
@@ -361,6 +429,10 @@ def _sample_llava(
         use_vcd = model_kwargs.get("use_vcd")
         use_m3id = model_kwargs.get("use_m3id")
         use_only = model_kwargs.get("use_only")
+        use_ascd = model_kwargs.get("use_ascd")
+
+        if use_ascd:
+            set_ascd_branch(self.model, 0)
 
         model_inputs = self.prepare_inputs_for_generation(input_ids, **model_kwargs)
         outputs, logits_cd = _llava_forward(
@@ -374,7 +446,7 @@ def _sample_llava(
             copy=True, dtype=torch.float32, device=input_ids.device,
         )
 
-        if use_ritual or use_vcd or use_m3id or use_only:
+        if use_ritual or use_vcd or use_m3id or use_only or use_ascd:
             next_token_logits_pos = next_token_logits
             next_token_logits_neg = next_token_logits
 
@@ -400,6 +472,25 @@ def _sample_llava(
                     self, model_inputs_neg, False, output_attentions, output_hidden_states,
                 )
                 next_token_logits_neg = outputs_neg.logits[:, -1, :].to(
+                    dtype=torch.float32, device=input_ids.device,
+                )
+            elif use_ascd:
+                assert model_kwargs_ascd is not None
+                model_inputs_ascd = self.prepare_inputs_for_generation(
+                    input_ids, **model_kwargs_ascd
+                )
+                set_ascd_branch(self.model, 1)
+                try:
+                    outputs_ascd, _ = _llava_forward(
+                        self,
+                        model_inputs_ascd,
+                        False,
+                        output_attentions,
+                        output_hidden_states,
+                    )
+                finally:
+                    set_ascd_branch(self.model, 0)
+                next_token_logits_ascd = outputs_ascd.logits[:, -1, :].to(
                     dtype=torch.float32, device=input_ids.device,
                 )
 
@@ -434,8 +525,20 @@ def _sample_llava(
                     diffs = next_token_logits + ritual_alpha_pos * next_token_logits_cd
                 else:
                     diffs = (1 + ritual_alpha_neg) * next_token_logits - ritual_alpha_neg * next_token_logits_cd
+            elif use_ascd:
+                diffs = ascd_contrastive_logits(
+                    next_token_logits,
+                    next_token_logits_ascd,
+                    alpha=float(model_kwargs.get("ascd_alpha", 1.0)),
+                    beta=float(model_kwargs.get("ascd_beta", 0.1)),
+                )
 
-            logits = diffs.masked_fill(next_token_logits < cutoff, -float("inf"))
+            if use_ascd:
+                logits = diffs
+            else:
+                logits = diffs.masked_fill(
+                    next_token_logits < cutoff, -float("inf")
+                )
             next_token_scores = logits_processor(input_ids, logits)
         else:
             next_token_scores = logits_processor(input_ids, next_token_logits)
@@ -463,6 +566,13 @@ def _sample_llava(
         if use_vcd or use_m3id:
             model_kwargs_neg = self._update_model_kwargs_for_generation(
                 outputs_neg, model_kwargs_neg, is_encoder_decoder=self.config.is_encoder_decoder,
+            )
+        if use_ascd:
+            assert model_kwargs_ascd is not None
+            model_kwargs_ascd = self._update_model_kwargs_for_generation(
+                outputs_ascd,
+                model_kwargs_ascd,
+                is_encoder_decoder=self.config.is_encoder_decoder,
             )
 
         this_peer_finished = stopping_criteria(input_ids, scores)
@@ -492,9 +602,10 @@ def _sample_llava(
 
 _LAVA_EXTRA_KWARGS = {
     "images", "images_pos", "images_neg",
-    "use_ritual", "use_vcd", "use_m3id", "use_only",
+    "use_ritual", "use_vcd", "use_m3id", "use_only", "use_ascd",
     "enhance_layer_index",
     "ritual_alpha_pos", "ritual_alpha_neg", "ritual_beta", "js_gamma",
+    "ascd_alpha", "ascd_beta",
 }
 _orig_llava_validate_model_kwargs = None
 

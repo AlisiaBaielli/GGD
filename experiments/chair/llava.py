@@ -1,7 +1,6 @@
-"""
-CHAIR evaluation for LLaVA-v1.5-7B.
+"""CHAIR evaluation for LLaVA-v1.5-7B.
 
-Supports: vanilla, chall (ours), ONLY, ONLY+EIC, VCD, M3ID.
+Supports: vanilla, chall (ours), ONLY, ONLY+EIC, VCD, M3ID, ASCD.
 """
 import argparse
 import json
@@ -9,6 +8,7 @@ import logging
 import os
 import random
 import sys
+import time
 import warnings
 from pathlib import Path
 
@@ -30,8 +30,18 @@ from llava.conversation import conv_templates
 from llava.mm_utils import tokenizer_image_token
 from llava.model import LlavaLlamaForCausalLM
 
-from causal_core.eval_common import caption_output_path, load_c_scores, resolve_method
-from causal_core.models.llava_sampling import evolve_only_sampling
+from causal_core.eval_common import (
+    caption_output_path,
+    excluded_image_ids,
+    load_c_scores,
+    resolve_method,
+    select_image_files,
+    validate_method_flags,
+)
+from causal_core.models.llava_sampling import (
+    evolve_only_sampling,
+    install_ascd_llava15,
+)
 from causal_core.monitor import CausalLogitsProcessor, CausalMonitor
 from causal_core.only_eic import inject_eic_for_only
 from causal_core.vcd import add_diffusion_noise
@@ -47,16 +57,33 @@ log = logging.getLogger(__name__)
 def parse_args():
     p = argparse.ArgumentParser(description="CHAIR eval for LLaVA-v1.5-7B")
     p.add_argument("--seed", type=int, default=3407)
+    p.add_argument("--image_seed", type=int)
+    p.add_argument("--per_image_seed", action="store_true")
     p.add_argument("--model_path", type=str, required=True)
     p.add_argument("--data_path", type=str, required=True)
     p.add_argument("--anno_path", type=str, required=True)
     p.add_argument("--out_path", type=str, required=True,
                    help="Output directory or .jsonl file path")
     p.add_argument("--num_eval_samples", type=int, default=500)
+    p.add_argument("--exclude_image_ids_file", type=str)
     p.add_argument("--max_new_tokens", type=int, default=128)
     p.add_argument("--temperature", type=float, default=1.0)
     p.add_argument("--top_p", type=float, default=1.0)
+    p.add_argument(
+        "--attn_implementation",
+        choices=["auto", "eager", "sdpa"],
+        default="auto",
+    )
+    p.add_argument(
+        "--record_efficiency",
+        action="store_true",
+        help="Record synchronized generation latency and peak CUDA memory per image",
+    )
     p.add_argument("--conv_mode", type=str, default="v1")
+    p.add_argument(
+        "--caption_prompt",
+        default="Please describe this image in detail.",
+    )
 
     p.add_argument("--c_scores_path", type=str, default=None)
     p.add_argument("--layer_index", type=int, default=1)
@@ -73,6 +100,13 @@ def parse_args():
                    help="With --use_only: use offline EIC head set in CD branch")
     p.add_argument("--use_vcd", action="store_true", help="VCD baseline")
     p.add_argument("--use_m3id", action="store_true", help="M3ID baseline")
+    p.add_argument(
+        "--use_ascd",
+        action="store_true",
+        help="ASCD baseline (official LLaVA-1.5-7B settings)",
+    )
+    p.add_argument("--ascd_alpha", type=float, default=1.0)
+    p.add_argument("--ascd_beta", type=float, default=0.1)
     p.add_argument("--noise_step", type=int, default=500)
 
     p.add_argument("--js_gamma", type=float, default=0.2)
@@ -89,19 +123,25 @@ def main():
     random.seed(args.seed)
     np.random.seed(args.seed)
 
+    validate_method_flags(args)
     method, needs_scores = resolve_method(args)
     # `method` is the canonical decoding behavior (vanilla/only/only_eic/vcd/m3id/
-    # chall) derived from flags. `--method_name` is only an OUTPUT LABEL (e.g.
+    # ascd/chall) derived from flags. `--method_name` is only an OUTPUT LABEL (e.g.
     # "chall_random" for head-selection ablations) and must NOT change behavior.
     label = args.method_name if args.method_name else method
     if needs_scores and not args.c_scores_path:
         raise ValueError(f"--c_scores_path is required for method={method}")
 
     tokenizer = AutoTokenizer.from_pretrained(args.model_path, use_fast=False)
-    # The CHALL grounding monitor reads per-head attention weights via
-    # output_attentions=True, which the default sdpa kernel silently returns as
-    # None (making the intervention a no-op). Force eager attention for chall.
-    attn_impl = "eager" if method == "chall" else "sdpa"
+    # CHALL needs returned attention weights; ASCD modifies pre-softmax attention
+    # logits. Both therefore require the eager implementation.
+    attn_impl = (
+        "eager"
+        if method in ("chall", "ascd")
+        else "sdpa"
+    ) if args.attn_implementation == "auto" else args.attn_implementation
+    if method == "ascd" and attn_impl != "eager":
+        raise ValueError("ASCD requires --attn_implementation eager")
     model = LlavaLlamaForCausalLM.from_pretrained(
         args.model_path, torch_dtype=torch.float16, device_map="auto",
         attn_implementation=attn_impl,
@@ -115,6 +155,18 @@ def main():
     image_processor = vision_tower.image_processor
 
     evolve_only_sampling()
+    if method == "ascd":
+        installed = install_ascd_llava15(
+            model,
+            image_start=args.img_start,
+            image_length=args.img_len,
+        )
+        log.info(
+            "ASCD installed on %d layers: upstream=70034c32 alpha=%s beta=%s",
+            installed,
+            args.ascd_alpha,
+            args.ascd_beta,
+        )
 
     monitor = None
     orig_fwd = None
@@ -133,12 +185,13 @@ def main():
         if method == "chall":
             monitor = CausalMonitor(
                 model, args.layer_index, c_scores,
-                img_start=args.img_start, img_len=args.img_len,
+                img_start=args.img_start,
+                img_len=args.img_len,
             )
             orig_fwd = monitor.install_qk_hook()
-            processors = LogitsProcessorList([
-                CausalLogitsProcessor(monitor, alpha=args.alpha)
-            ])
+            processors = LogitsProcessorList(
+                [CausalLogitsProcessor(monitor, alpha=args.alpha)]
+            )
         elif method == "only_eic":
             layer_for_only = inject_eic_for_only(
                 model=model,
@@ -150,8 +203,16 @@ def main():
     with open(args.anno_path) as f:
         coco = json.load(f)
     images = coco["images"]
-    random.shuffle(images)
-    images = images[: args.num_eval_samples]
+    image_seed = args.seed if args.image_seed is None else args.image_seed
+    exclusions = excluded_image_ids(args.exclude_image_ids_file)
+    selected_files = select_image_files(
+        [image["file_name"] for image in images],
+        exclusions,
+        args.num_eval_samples,
+        image_seed,
+    )
+    images_by_filename = {image["file_name"]: image for image in images}
+    images = [images_by_filename[filename] for filename in selected_files]
 
     out_file = caption_output_path(args.out_path, label)
     log.info(f"CHAIR method={method} label={label} alpha={args.alpha} n={len(images)} -> {out_file}")
@@ -166,8 +227,10 @@ def main():
         image = Image.open(img_path).convert("RGB")
         image_tensor = image_processor.preprocess(image, return_tensors="pt")["pixel_values"][0]
         image_tensor = image_tensor.unsqueeze(0).half().to(model.device)
+        if monitor is not None:
+            monitor.reset()
 
-        qs = DEFAULT_IMAGE_TOKEN + "\nPlease describe this image in detail."
+        qs = DEFAULT_IMAGE_TOKEN + "\n" + args.caption_prompt
         conv = conv_templates[args.conv_mode].copy()
         conv.append_message(conv.roles[0], qs)
         conv.append_message(conv.roles[1], None)
@@ -191,6 +254,9 @@ def main():
             use_only=(method in ("only", "only_eic")),
             use_vcd=(method == "vcd"),
             use_m3id=(method == "m3id"),
+            use_ascd=(method == "ascd"),
+            ascd_alpha=args.ascd_alpha,
+            ascd_beta=args.ascd_beta,
             enhance_layer_index=layer_for_only,
             js_gamma=args.js_gamma,
             ritual_alpha_pos=args.ritual_alpha_pos,
@@ -200,15 +266,44 @@ def main():
         if processors:
             gen_kwargs["logits_processor"] = processors
 
+        if args.per_image_seed:
+            sample_seed = (args.seed * 1_000_003 + img_id) % (2**31)
+            torch.manual_seed(sample_seed)
+            torch.cuda.manual_seed_all(sample_seed)
+            random.seed(sample_seed)
+            np.random.seed(sample_seed)
+
+        if args.record_efficiency and torch.cuda.is_available():
+            torch.cuda.synchronize()
+            torch.cuda.reset_peak_memory_stats()
+        generation_start = time.perf_counter()
         with torch.inference_mode():
             output_ids = model.generate(input_ids, **gen_kwargs)
+        if args.record_efficiency and torch.cuda.is_available():
+            torch.cuda.synchronize()
+        generation_seconds = time.perf_counter() - generation_start
+        peak_memory_gib = (
+            torch.cuda.max_memory_allocated() / (1024**3)
+            if args.record_efficiency and torch.cuda.is_available()
+            else None
+        )
         if isinstance(output_ids, tuple):
             output_ids = output_ids[0]
 
+        generated_tokens = int(output_ids.shape[1] - input_ids.shape[1])
         output_text = tokenizer.batch_decode(
             output_ids[:, input_ids.shape[1]:], skip_special_tokens=True,
         )[0].strip()
-        results.append({"image_id": img_id, "caption": output_text})
+        result = {
+            "image_id": img_id,
+            "caption": output_text,
+            "caption_prompt": args.caption_prompt,
+        }
+        if args.record_efficiency:
+            result["generation_seconds"] = generation_seconds
+            result["peak_memory_gib"] = peak_memory_gib
+            result["generated_tokens"] = generated_tokens
+        results.append(result)
 
     if monitor is not None and orig_fwd is not None:
         monitor.restore(orig_fwd)

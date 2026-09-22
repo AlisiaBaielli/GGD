@@ -1,9 +1,5 @@
 # Causal Decode-Time Steering for Hallucination Mitigation in Vision-Language Models
 
-##### Alisia Sara Baielli
-
-###### MSc Thesis · University of Amsterdam · 2026
-
 # Main Process
 
 
@@ -71,7 +67,34 @@ sbatch scripts/reproduce/llava_chair_all.sh
 
 ```bash
 bash scripts/reproduce/run.sh llava chair     # or pope / amber / mme / mmvp / mmbench
-bash scripts/reproduce/submit_all.sh          # full thesis grid
+bash scripts/reproduce/submit_all.sh          # full evaluation grid
 ```
 
 Default settings (seeds, sample counts, POPE split) live in `scripts/reproduce/run.sh`; `run.sh` prints a summary table after each run.
+
+## Additional paper analyses
+
+ASCD uses the existing LLaVA CHAIR runner:
+
+```bash
+METHODS="vanilla chall ascd" bash scripts/reproduce/run.sh llava chair
+```
+
+Efficiency recording uses the same interface:
+
+```bash
+RECORD_EFFICIENCY=1 CHAIR_EXCLUSIONS_FILE=/path/to/exclusions.json \
+METHODS="vanilla chall" bash scripts/reproduce/run.sh qwen3 chair
+```
+
+The retained statistical analyses are under `experiments/analysis/`:
+
+```bash
+python experiments/analysis/grounding_trend.py
+python experiments/analysis/environment_validity.py --help
+python experiments/analysis/calibration_stability.py --help
+python experiments/analysis/bootstrap_ci.py --help
+python experiments/analysis/efficiency_benchmark.py --help
+```
+
+ASCD provenance and third-party attribution are recorded in `NOTICE`.

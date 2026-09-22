@@ -13,7 +13,7 @@ def effective_temperature(grounding_score: float,
     return max(1.0 - alpha * (1.0 - grounding_score), tau_floor)
 
 def sharpen_logits(logits: torch.Tensor,
-                   grounding_score: float,
+                   grounding_score: float | torch.Tensor,
                    alpha: float,
                    tau_floor: float = 0.3,
                    noop_threshold: float = 0.99) -> torch.Tensor:
@@ -22,6 +22,14 @@ def sharpen_logits(logits: torch.Tensor,
     When tau_eff is essentially 1.0 (grounded), the logits are returned
     unchanged (no division). Otherwise: ``logits / tau_eff``.
     """
+    if torch.is_tensor(grounding_score):
+        tau = torch.clamp(
+            1.0 - alpha * (1.0 - grounding_score),
+            min=tau_floor,
+        )
+        tau = torch.nan_to_num(tau, nan=1.0, posinf=1.0, neginf=tau_floor)
+        return torch.where(tau < noop_threshold, logits / tau, logits)
+
     tau = effective_temperature(grounding_score, alpha, tau_floor)
     if tau < noop_threshold:
         return logits / tau

@@ -24,7 +24,10 @@ from transformers import AutoTokenizer
 from transformers.generation.logits_process import LogitsProcessorList
 
 from causal_core.monitor import CausalMonitor, CausalLogitsProcessor
-from causal_core.models.llava_sampling import evolve_only_sampling
+from causal_core.models.llava_sampling import (
+    evolve_only_sampling,
+    install_ascd_llava15,
+)
 from causal_core.vcd import add_diffusion_noise
 
 warnings.filterwarnings("ignore")
@@ -52,6 +55,9 @@ def parse_args():
     p.add_argument("--only_gamma", type=float, default=0.25)
     p.add_argument("--use_vcd", action="store_true",
                    help="Run VCD baseline (diffusion-noised negative image, contrastive decoding).")
+    p.add_argument("--use_ascd", action="store_true")
+    p.add_argument("--ascd_alpha", type=float, default=1.0)
+    p.add_argument("--ascd_beta", type=float, default=0.1)
     p.add_argument("--noise_step", type=int, default=500)
     p.add_argument("--limit", type=int, default=None,
                    help="Cap number of questions (validation only; default = full set).")
@@ -75,6 +81,8 @@ def parse_letter(text: str):
 
 def main():
     args = parse_args()
+    if sum((args.use_only, args.use_vcd, args.use_ascd)) > 1:
+        raise ValueError("Select at most one of ONLY, VCD, or ASCD")
     torch.manual_seed(args.seed); torch.cuda.manual_seed_all(args.seed)
     import random, numpy as np
     random.seed(args.seed); np.random.seed(args.seed)
@@ -83,6 +91,12 @@ def main():
     tokenizer = AutoTokenizer.from_pretrained(args.model_path, use_fast=False)
     model = LlavaLlamaForCausalLM.from_pretrained(
         args.model_path, torch_dtype=torch.float16, device_map="auto",
+        attn_implementation=(
+            "eager"
+            if args.use_ascd
+            or (not args.use_only and not args.use_vcd and args.alpha > 0)
+            else "sdpa"
+        ),
     )
     model.eval()
     vt = model.get_vision_tower()
@@ -92,6 +106,12 @@ def main():
     image_processor = vt.image_processor
 
     evolve_only_sampling()
+    if args.use_ascd:
+        install_ascd_llava15(
+            model,
+            image_start=args.img_start,
+            image_length=args.img_len,
+        )
 
     log.info("[data] downloading MMVP from HuggingFace")
     qcsv = hf_hub_download("MMVP/MMVP", "Questions.csv", repo_type="dataset")
@@ -119,6 +139,10 @@ def main():
                  f"beta={args.only_beta} gamma={args.only_gamma}")
     elif args.use_vcd:
         log.info(f"[VCD active] noise_step={args.noise_step}")
+    elif args.use_ascd:
+        log.info(
+            f"[ASCD active] alpha={args.ascd_alpha} beta={args.ascd_beta}"
+        )
     elif args.alpha > 0:
         monitor = CausalMonitor(model, args.layer_index, c_scores,
                                img_start=args.img_start, img_len=args.img_len)
@@ -161,6 +185,9 @@ def main():
             max_new_tokens=args.max_new_tokens,
             use_only=args.use_only,
             use_vcd=args.use_vcd,
+            use_ascd=args.use_ascd,
+            ascd_alpha=args.ascd_alpha,
+            ascd_beta=args.ascd_beta,
             enhance_layer_index=args.layer_index,
         )
         if args.use_only:

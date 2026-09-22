@@ -1,6 +1,7 @@
 """
 causal_core/monitor.py
 """
+import math
 import os
 import re
 import logging
@@ -39,7 +40,6 @@ class CausalMonitor:
         self.high_c_indices = torch.where(self.high_c_mask)[0]
         self.c_weights = C[self.high_c_mask]
         self.c_weights = self.c_weights / (self.c_weights.sum() + 1e-8)
-
         self.img_start = img_start
         self.img_len = img_len
 
@@ -49,6 +49,10 @@ class CausalMonitor:
 
         log.info(f"[Causal] layer={layer_idx} monitoring {len(self.high_c_indices)}/{self.num_heads} heads, "
                  f"img_tokens=[{img_start}:{img_start+img_len}]")
+
+    def reset(self):
+        self.grounding_score = 1.0
+        self.mean_entropy = 0.0
 
     def install_qk_hook(self):
         """
@@ -77,16 +81,25 @@ class CausalMonitor:
 
                     img_end = monitor.img_start + monitor.img_len
 
-                    img_attn = attn_weights[:, monitor.high_c_indices.to(attn_weights.device), :,
-                                            monitor.img_start:img_end]
-
-                    img_attn = img_attn.squeeze(2)
+                    img_attn = attn_weights[
+                        :,
+                        monitor.high_c_indices.to(attn_weights.device),
+                        -1,
+                        monitor.img_start:img_end,
+                    ]
 
                     gs, mean_norm_entropy = compute_grounding_score_batched(
-                        img_attn, monitor.c_weights
+                        img_attn,
+                        monitor.c_weights,
                     )
-                    monitor.grounding_score = gs
-                    monitor.mean_entropy = mean_norm_entropy
+                    monitor.grounding_score = (
+                        float(gs) if math.isfinite(float(gs)) else 1.0
+                    )
+                    monitor.mean_entropy = (
+                        float(mean_norm_entropy)
+                        if math.isfinite(float(mean_norm_entropy))
+                        else 0.0
+                    )
 
             return result
 
@@ -95,6 +108,7 @@ class CausalMonitor:
 
     def restore(self, original_forward):
         self.layer.self_attn.forward = original_forward
+
 
 class CausalMonitorQwen3:
     """
@@ -132,6 +146,7 @@ class CausalMonitorQwen3:
 
         self.image_token_id = image_token_id
         self.img_positions = None
+        self.img_end = None
 
         self.grounding_score = 1.0
         self.mean_entropy = 0.0
@@ -156,7 +171,6 @@ class CausalMonitorQwen3:
         self._orig_forward = original_forward
 
         from transformers.models.qwen3_vl.modeling_qwen3_vl import apply_rotary_pos_emb
-        from transformers.models.qwen3.modeling_qwen3 import repeat_kv
 
         def hooked_forward(hidden_states, position_embeddings,
                            attention_mask=None, past_key_values=None, **kwargs):
@@ -168,7 +182,12 @@ class CausalMonitorQwen3:
             B, S_q = hidden_states.shape[:2]
             is_decode = S_q == 1
 
-            if is_decode and monitor.img_positions is not None and len(monitor.img_positions) > 0                    and len(monitor.high_c_indices) > 0:
+            if (
+                is_decode
+                and monitor.img_positions is not None
+                and len(monitor.img_positions) > 0
+                and len(monitor.high_c_indices) > 0
+            ):
 
                 q_shape = (B, S_q, monitor.num_heads, monitor.head_dim)
                 q = monitor.attn.q_norm(
@@ -178,7 +197,12 @@ class CausalMonitorQwen3:
                 cos, sin = position_embeddings
 
                 k_dummy = monitor.attn.k_norm(
-                    monitor.attn.k_proj(hidden_states).view(B, S_q, monitor.num_kv_heads, monitor.head_dim)
+                    monitor.attn.k_proj(hidden_states).view(
+                        B,
+                        S_q,
+                        monitor.num_kv_heads,
+                        monitor.head_dim,
+                    )
                 ).transpose(1, 2)
                 q, _ = apply_rotary_pos_emb(q, k_dummy, cos, sin)
 
@@ -186,12 +210,18 @@ class CausalMonitorQwen3:
                 if past_key_values is not None:
                     layer_idx = monitor.attn.layer_idx
 
-                    if hasattr(past_key_values, "layers") and layer_idx < len(past_key_values.layers):
+                    if (
+                        hasattr(past_key_values, "layers")
+                        and layer_idx < len(past_key_values.layers)
+                    ):
                         lc = past_key_values.layers[layer_idx]
                         if hasattr(lc, "keys") and lc.keys is not None:
                             full_k = lc.keys
 
-                    elif hasattr(past_key_values, "key_cache") and layer_idx < len(past_key_values.key_cache):
+                    elif (
+                        hasattr(past_key_values, "key_cache")
+                        and layer_idx < len(past_key_values.key_cache)
+                    ):
                         full_k = past_key_values.key_cache[layer_idx]
 
                 if full_k is not None:
@@ -199,34 +229,52 @@ class CausalMonitorQwen3:
                     img_pos = monitor.img_positions
                     device = q.device
 
-                    if img_pos is not None and len(img_pos) > 0 and img_pos[-1] < KV_len:
-
-                        full_k_exp = repeat_kv(full_k, monitor.num_kv_groups)
-
-                        scores = torch.matmul(q, full_k_exp.transpose(2, 3)) * monitor.scaling
-
-                        if attention_mask is not None and attention_mask.shape[-1] >= KV_len:
-                            scores = scores + attention_mask[:, :, :, :KV_len]
-
-                        attn_w = torch.softmax(scores, dim=-1, dtype=torch.float32)
+                    if (
+                        img_pos is not None
+                        and len(img_pos) > 0
+                        and monitor.img_end < KV_len
+                    ):
 
                         high_idx = monitor.high_c_indices.to(device)
                         ip = img_pos.to(device)
+                        kv_idx = torch.div(
+                            high_idx, monitor.num_kv_groups, rounding_mode="floor"
+                        )
+                        selected_q = q[:, high_idx]
+                        image_k = full_k[:, kv_idx][:, :, ip]
+                        image_scores = (
+                            torch.matmul(
+                                selected_q, image_k.transpose(2, 3)
+                            )
+                            * monitor.scaling
+                        )
+                        if (
+                            attention_mask is not None
+                            and attention_mask.shape[-1] >= KV_len
+                        ):
+                            image_scores = image_scores + attention_mask[..., ip]
 
-                        img_attn = attn_w[:, high_idx, 0, :][:, :, ip]
+                        img_attn_norm = torch.softmax(
+                            image_scores, dim=-1, dtype=torch.float32
+                        ).squeeze(2)
 
-                        img_attn_sum = img_attn.sum(dim=-1, keepdim=True).clamp(min=1e-8)
-                        img_attn_norm = img_attn / img_attn_sum
-
-                        entropy = -(img_attn_norm * (img_attn_norm + 1e-10).log()).sum(dim=-1)
-                        max_entropy = torch.log(torch.tensor(float(len(ip)), device=device))
-                        norm_entropy = entropy / max_entropy.clamp(min=1e-8)
+                        entropy = -(
+                            img_attn_norm * (img_attn_norm + 1e-10).log()
+                        ).sum(dim=-1)
+                        max_entropy = math.log(float(len(ip)))
+                        norm_entropy = entropy / max(max_entropy, 1e-8)
 
                         c_w = monitor.c_weights.to(device)
-                        mean_norm_entropy = (norm_entropy * c_w.unsqueeze(0)).sum(dim=-1).mean().item()
+                        mean_norm_entropy = (
+                            norm_entropy * c_w.unsqueeze(0)
+                        ).sum(dim=-1).mean()
 
-                        monitor.grounding_score = 1.0 - mean_norm_entropy
-                        monitor.mean_entropy = mean_norm_entropy
+                        monitor.grounding_score = torch.nan_to_num(
+                            1.0 - mean_norm_entropy, nan=1.0
+                        )
+                        monitor.mean_entropy = torch.nan_to_num(
+                            mean_norm_entropy, nan=0.0
+                        )
 
             return result
 
@@ -238,16 +286,20 @@ class CausalMonitorQwen3:
 
     def set_img_positions(self, input_ids, image_token_id):
         """Call before generate to detect image token positions in the input."""
+        self.grounding_score = 1.0
+        self.mean_entropy = 0.0
         ids = input_ids[0] if input_ids.dim() > 1 else input_ids
         mask = ids == image_token_id
         if mask.any():
             self.img_positions = mask.nonzero(as_tuple=True)[0]
+            self.img_end = int(self.img_positions[-1])
             log.info(
                 f"[Causal-Qwen3] Detected {len(self.img_positions)} image tokens "
                 f"at positions [{self.img_positions[0].item()}..{self.img_positions[-1].item()}]"
             )
         else:
             self.img_positions = None
+            self.img_end = None
             log.warning("[Causal-Qwen3] No image tokens found in input_ids!")
 
 class CausalMonitorInternVL:
@@ -287,6 +339,7 @@ class CausalMonitorInternVL:
 
         self.image_token_id = image_token_id
         self.img_positions = None
+        self.img_end = None
 
         self.grounding_score = 1.0
         self.mean_entropy = 0.0
@@ -305,7 +358,7 @@ class CausalMonitorInternVL:
         original_forward = self.attn.forward
         self._orig_forward = original_forward
 
-        from transformers.models.qwen3.modeling_qwen3 import apply_rotary_pos_emb, repeat_kv
+        from transformers.models.qwen3.modeling_qwen3 import apply_rotary_pos_emb
 
         def hooked_forward(hidden_states, position_embeddings,
                            attention_mask=None, past_key_values=None, **kwargs):
@@ -317,7 +370,12 @@ class CausalMonitorInternVL:
             B, S_q = hidden_states.shape[:2]
             is_decode = S_q == 1
 
-            if is_decode and monitor.img_positions is not None and len(monitor.img_positions) > 0                    and len(monitor.high_c_indices) > 0:
+            if (
+                is_decode
+                and monitor.img_positions is not None
+                and len(monitor.img_positions) > 0
+                and len(monitor.high_c_indices) > 0
+            ):
 
                 q_shape = (B, S_q, monitor.num_heads, monitor.head_dim)
                 q = monitor.attn.q_norm(
@@ -327,18 +385,29 @@ class CausalMonitorInternVL:
                 cos, sin = position_embeddings
 
                 k_dummy = monitor.attn.k_norm(
-                    monitor.attn.k_proj(hidden_states).view(B, S_q, monitor.num_kv_heads, monitor.head_dim)
+                    monitor.attn.k_proj(hidden_states).view(
+                        B,
+                        S_q,
+                        monitor.num_kv_heads,
+                        monitor.head_dim,
+                    )
                 ).transpose(1, 2)
                 q, _ = apply_rotary_pos_emb(q, k_dummy, cos, sin)
 
                 full_k = None
                 if past_key_values is not None:
                     layer_idx = monitor.attn.layer_idx
-                    if hasattr(past_key_values, "layers") and layer_idx < len(past_key_values.layers):
+                    if (
+                        hasattr(past_key_values, "layers")
+                        and layer_idx < len(past_key_values.layers)
+                    ):
                         lc = past_key_values.layers[layer_idx]
                         if hasattr(lc, "keys") and lc.keys is not None:
                             full_k = lc.keys
-                    elif hasattr(past_key_values, "key_cache") and layer_idx < len(past_key_values.key_cache):
+                    elif (
+                        hasattr(past_key_values, "key_cache")
+                        and layer_idx < len(past_key_values.key_cache)
+                    ):
                         full_k = past_key_values.key_cache[layer_idx]
 
                 if full_k is not None:
@@ -346,34 +415,52 @@ class CausalMonitorInternVL:
                     img_pos = monitor.img_positions
                     device = q.device
 
-                    if img_pos is not None and len(img_pos) > 0 and img_pos[-1] < KV_len:
-
-                        full_k_exp = repeat_kv(full_k, monitor.num_kv_groups)
-
-                        scores = torch.matmul(q, full_k_exp.transpose(2, 3)) * monitor.scaling
-
-                        if attention_mask is not None and attention_mask.shape[-1] >= KV_len:
-                            scores = scores + attention_mask[:, :, :, :KV_len]
-
-                        attn_w = torch.softmax(scores, dim=-1, dtype=torch.float32)
+                    if (
+                        img_pos is not None
+                        and len(img_pos) > 0
+                        and monitor.img_end < KV_len
+                    ):
 
                         high_idx = monitor.high_c_indices.to(device)
                         ip = img_pos.to(device)
+                        kv_idx = torch.div(
+                            high_idx, monitor.num_kv_groups, rounding_mode="floor"
+                        )
+                        selected_q = q[:, high_idx]
+                        image_k = full_k[:, kv_idx][:, :, ip]
+                        image_scores = (
+                            torch.matmul(
+                                selected_q, image_k.transpose(2, 3)
+                            )
+                            * monitor.scaling
+                        )
+                        if (
+                            attention_mask is not None
+                            and attention_mask.shape[-1] >= KV_len
+                        ):
+                            image_scores = image_scores + attention_mask[..., ip]
 
-                        img_attn = attn_w[:, high_idx, 0, :][:, :, ip]
+                        img_attn_norm = torch.softmax(
+                            image_scores, dim=-1, dtype=torch.float32
+                        ).squeeze(2)
 
-                        img_attn_sum = img_attn.sum(dim=-1, keepdim=True).clamp(min=1e-8)
-                        img_attn_norm = img_attn / img_attn_sum
-
-                        entropy = -(img_attn_norm * (img_attn_norm + 1e-10).log()).sum(dim=-1)
-                        max_entropy = torch.log(torch.tensor(float(len(ip)), device=device))
-                        norm_entropy = entropy / max_entropy.clamp(min=1e-8)
+                        entropy = -(
+                            img_attn_norm * (img_attn_norm + 1e-10).log()
+                        ).sum(dim=-1)
+                        max_entropy = math.log(float(len(ip)))
+                        norm_entropy = entropy / max(max_entropy, 1e-8)
 
                         c_w = monitor.c_weights.to(device)
-                        mean_norm_entropy = (norm_entropy * c_w.unsqueeze(0)).sum(dim=-1).mean().item()
+                        mean_norm_entropy = (
+                            norm_entropy * c_w.unsqueeze(0)
+                        ).sum(dim=-1).mean()
 
-                        monitor.grounding_score = 1.0 - mean_norm_entropy
-                        monitor.mean_entropy = mean_norm_entropy
+                        monitor.grounding_score = torch.nan_to_num(
+                            1.0 - mean_norm_entropy, nan=1.0
+                        )
+                        monitor.mean_entropy = torch.nan_to_num(
+                            mean_norm_entropy, nan=0.0
+                        )
 
             return result
 
@@ -385,16 +472,20 @@ class CausalMonitorInternVL:
 
     def set_img_positions(self, input_ids, image_token_id):
         """Call before generate to detect image token positions in the input."""
+        self.grounding_score = 1.0
+        self.mean_entropy = 0.0
         ids = input_ids[0] if input_ids.dim() > 1 else input_ids
         mask = ids == image_token_id
         if mask.any():
             self.img_positions = mask.nonzero(as_tuple=True)[0]
+            self.img_end = int(self.img_positions[-1])
             log.info(
                 f"[Causal-InternVL] Detected {len(self.img_positions)} image tokens "
                 f"at positions [{self.img_positions[0].item()}..{self.img_positions[-1].item()}]"
             )
         else:
             self.img_positions = None
+            self.img_end = None
             log.warning("[Causal-InternVL] No image tokens found in input_ids!")
 
 class CausalLogitsProcessor:
@@ -423,6 +514,7 @@ class CausalLogitsProcessor:
     def __call__(self, input_ids, scores):
         gs = self.monitor.grounding_score if self.monitor is not None else 1.0
         return sharpen_logits(scores, gs, self.alpha, tau_floor=0.3)
+
 
 def parse_image_id(filename: str) -> int:
     """Parse a numeric image id from a COCO-style filename, e.g.

@@ -221,6 +221,58 @@ def eager_attention_forward(
     return attn_output, attn_weights
 
 
+def ascd_attention_forward(
+    module: nn.Module,
+    query: torch.Tensor,
+    key: torch.Tensor,
+    value: torch.Tensor,
+    attention_mask: torch.Tensor | None,
+    scaling: float,
+    dropout: float = 0.0,
+    **kwargs: Unpack[TransformersKwargs],
+):
+    key_states = repeat_kv(key, module.num_key_value_groups)
+    value_states = repeat_kv(value, module.num_key_value_groups)
+    attn_weights = torch.matmul(query, key_states.transpose(2, 3)) * scaling
+    if attention_mask is not None:
+        attn_weights = attn_weights + attention_mask[..., : key_states.shape[-2]]
+
+    image_start = int(module._ascd_image_start)
+    image_end = min(
+        image_start + int(module._ascd_image_length),
+        attn_weights.shape[-1],
+    )
+    if image_end > image_start:
+        attn_weights = attn_weights.clone()
+        visual = attn_weights[:, :, -1, image_start:image_end]
+        if int(module._ascd_branch_id) == 0:
+            selected = module._ascd_head_mask.to(
+                device=visual.device,
+                dtype=torch.bool,
+            )
+            chosen = visual[:, selected]
+            visual[:, selected] = chosen + 0.5 * torch.abs(chosen)
+        else:
+            top_k = min(max(1, int(module._ascd_image_length * 0.1)), visual.shape[-1])
+            indices = torch.topk(visual, top_k, dim=-1).indices
+            mask = torch.zeros_like(visual, dtype=torch.bool)
+            mask.scatter_(-1, indices, True)
+            visual[mask] -= torch.abs(visual[mask])
+
+    attn_weights = nn.functional.softmax(
+        attn_weights,
+        dim=-1,
+        dtype=torch.float32,
+    ).to(query.dtype)
+    attn_weights = nn.functional.dropout(
+        attn_weights,
+        p=dropout,
+        training=module.training,
+    )
+    attn_output = torch.matmul(attn_weights, value_states)
+    return attn_output.transpose(1, 2).contiguous(), attn_weights
+
+
 @use_kernelized_func(apply_rotary_pos_emb)
 class LlamaAttention(nn.Module):
     """Multi-headed attention from 'Attention Is All You Need' paper"""
@@ -386,9 +438,12 @@ class LlamaAttention(nn.Module):
             return attn_output, None, attn_output_cd
 
         # ── Standard path ─────────────────────────────────────────────────
-        attention_interface: Callable = ALL_ATTENTION_FUNCTIONS.get_interface(
-            self.config._attn_implementation, eager_attention_forward
-        )
+        if getattr(self, "_ascd_enabled", False):
+            attention_interface = ascd_attention_forward
+        else:
+            attention_interface: Callable = ALL_ATTENTION_FUNCTIONS.get_interface(
+                self.config._attn_implementation, eager_attention_forward
+            )
 
         attn_output, attn_weights = attention_interface(
             self,

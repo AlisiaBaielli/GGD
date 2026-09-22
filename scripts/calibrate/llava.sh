@@ -7,22 +7,23 @@ else
 fi
 setup_cluster
 
-CALIB_JSONL="${COCO_DIR}/calibration.jsonl"
+CALIB_JSONL="${CALIB_JSONL:-${COCO_DIR}/calibration.jsonl}"
+N_SAMPLES="${N_SAMPLES:-8000}"
 if [ ! -f "${CALIB_JSONL}" ]; then
   python -m causal_core.make_calibration_jsonl \
     --instances "${COCO_DIR}/annotations/instances_val2014.json" \
-    --out "${CALIB_JSONL}" --n 8000
+    --out "${CALIB_JSONL}" --n "${N_SAMPLES}"
 fi
 
-RAW="${SCORES_ROOT}/llava_raw.pt"
-ZSCORE="${SCORES_ROOT}/llava_eic.pt"
+RAW="${RAW:-${SCORES_ROOT}/llava_raw.pt}"
+ZSCORE="${ZSCORE:-${SCORES_ROOT}/llava_eic.pt}"
 
 python -m causal_core.calibrate \
   --model_name "${MODEL_LLAVA}" \
   --model_type llava \
   --question_file "${CALIB_JSONL}" \
   --image_folder "${COCO_DIR}/val2014" \
-  --n_samples 8000 \
+  --n_samples "${N_SAMPLES}" \
   --all_layers \
   --variance_mode env_per_example \
   --out "${RAW}"

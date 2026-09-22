@@ -1,5 +1,5 @@
 """
-Mechanistic validation for LLaVA-v1.5-7B (thesis Section 4.2).
+Mechanistic validation for LLaVA-v1.5-7B.
 """
 import os
 import sys

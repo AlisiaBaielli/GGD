@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Submit the full thesis reproduction grid as SLURM jobs:
+# Submit the full reproduction grid as SLURM jobs:
 #   - hallucination: {llava,qwen3,internvl} x {chair,pope,amber,mme}   (12 jobs)
 #   - capability:    {llava,qwen3} x {mmvp,mmbench}                    (4 jobs)
 #   - quality:       {llava,qwen3,internvl} METEOR+CLIPScore          (3 jobs, after chair)

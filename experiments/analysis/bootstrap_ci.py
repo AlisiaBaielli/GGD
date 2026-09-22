@@ -1,76 +1,157 @@
-"""
-Paired bootstrap 95% CI on the CHAIR delta (vanilla -> causal steering).
-"""
-import json, argparse, numpy as np
+from __future__ import annotations
+
+import argparse
+import json
 from pathlib import Path
 
-RNG = np.random.default_rng(42)
-B = 10000
+import numpy as np
+from scipy.stats import binomtest, wilcoxon
 
-def load_per_image(p):
-    d = json.load(open(p))
-    out = {}
-    for s in d['sentences']:
-        out[s['image_id']] = (int(s['metrics']['CHAIRs']),
-                              float(s['metrics']['CHAIRi']))
-    return out
 
-def paired_delta_ci(van_vals, ste_vals, B=B, alpha=0.05):
-    """Paired bootstrap on the difference of means."""
-    assert len(van_vals) == len(ste_vals)
-    diffs = ste_vals - van_vals
-    n = len(diffs)
-    boot = np.array([diffs[RNG.integers(0, n, n)].mean()
-                     for _ in range(B)])
-    med = float(np.median(boot))
-    lo = float(np.percentile(boot, 100 * alpha/2))
-    hi = float(np.percentile(boot, 100 * (1-alpha/2)))
-    point = float(diffs.mean())
-    return point, med, lo, hi, boot
+def load_sentences(path: str) -> dict[int, dict]:
+    payload = json.loads(Path(path).read_text())
+    sentences = payload["sentences"]
+    indexed = {int(sentence["image_id"]): sentence for sentence in sentences}
+    if len(indexed) != len(sentences):
+        raise ValueError(f"Duplicate image IDs in {path}")
+    return indexed
 
-def run(label, van_path, ste_path):
-    van = load_per_image(van_path)
-    ste = load_per_image(ste_path)
-    common = sorted(set(van) & set(ste))
-    print(f"\n══════════════════════════════════════════════════════════════")
-    print(f"  {label}")
-    print(f"══════════════════════════════════════════════════════════════")
-    print(f"n images (matched): {len(common)}")
 
-    van_s = np.array([van[i][0] for i in common])
-    ste_s = np.array([ste[i][0] for i in common])
-    van_i = np.array([van[i][1] for i in common])
-    ste_i = np.array([ste[i][1] for i in common])
+def sufficient_statistics(sentences: list[dict]) -> np.ndarray:
+    rows = []
+    for sentence in sentences:
+        generated = sentence["mscoco_generated_words"]
+        hallucinated = sentence["mscoco_hallucinated_words"]
+        ground_truth = set(sentence["mscoco_gt_words"])
+        recalled = ground_truth.intersection(generated)
+        rows.append(
+            (
+                int(bool(hallucinated)),
+                len(hallucinated),
+                len(generated),
+                len(recalled),
+                len(ground_truth),
+            )
+        )
+    return np.asarray(rows, dtype=np.float64)
 
-    print(f"\nCHAIRs (sentence-level: image had any hallucination?)")
-    print(f"  vanilla  : {van_s.mean()*100:.2f}%")
-    print(f"  Causal   : {ste_s.mean()*100:.2f}%")
-    pt, med, lo, hi, boot = paired_delta_ci(van_s, ste_s)
-    print(f"  Δ (point): {pt*100:+.2f} pp")
-    print(f"  Δ (boot) : median {med*100:+.2f} pp  95% CI [{lo*100:+.2f}, {hi*100:+.2f}]")
-    p = (boot >= 0).mean()
-    print(f"  one-sided p(Δ ≥ 0): {p:.4f}")
 
-    print(f"\nCHAIRi (instance-level: fraction of objects hallucinated per image)")
-    print(f"  vanilla  : {van_i.mean()*100:.2f}%")
-    print(f"  Causal   : {ste_i.mean()*100:.2f}%")
-    pt, med, lo, hi, boot = paired_delta_ci(van_i, ste_i)
-    print(f"  Δ (point): {pt*100:+.2f} pp")
-    print(f"  Δ (boot) : median {med*100:+.2f} pp  95% CI [{lo*100:+.2f}, {hi*100:+.2f}]")
-    p = (boot >= 0).mean()
-    print(f"  one-sided p(Δ ≥ 0): {p:.4f}")
+def pooled_metrics(statistics: np.ndarray) -> np.ndarray:
+    return np.asarray(
+        (
+            statistics[:, 0].mean(),
+            statistics[:, 1].sum() / statistics[:, 2].sum(),
+            statistics[:, 3].sum() / statistics[:, 4].sum(),
+        )
+    )
 
-def main():
-    p = argparse.ArgumentParser()
-    p.add_argument("--vanilla_results", type=str, required=True,
-                   help="Path to vanilla CHAIR result JSON")
-    p.add_argument("--chall_results", type=str, required=True,
-                   help="Path to CHALL (ours) CHAIR result JSON")
-    p.add_argument("--label", type=str, default="CHAIR delta (vanilla → CHALL)")
-    args = p.parse_args()
 
-    print(f"Paired bootstrap 95% CI (B={B})")
-    run(args.label, args.vanilla_results, args.chall_results)
+def paired_comparison(
+    reference: dict[int, dict],
+    candidate: dict[int, dict],
+    bootstrap: int,
+    seed: int,
+) -> dict:
+    if reference.keys() != candidate.keys():
+        missing = sorted(reference.keys() - candidate.keys())
+        extra = sorted(candidate.keys() - reference.keys())
+        raise ValueError(f"Image IDs differ; missing={missing[:5]} extra={extra[:5]}")
 
-if __name__ == '__main__':
+    image_ids = sorted(reference)
+    reference_statistics = sufficient_statistics(
+        [reference[image_id] for image_id in image_ids]
+    )
+    candidate_statistics = sufficient_statistics(
+        [candidate[image_id] for image_id in image_ids]
+    )
+    reference_metrics = pooled_metrics(reference_statistics)
+    candidate_metrics = pooled_metrics(candidate_statistics)
+    rng = np.random.default_rng(seed)
+    metric_differences = np.empty((bootstrap, 3), dtype=np.float64)
+    for draw in range(bootstrap):
+        indices = rng.integers(0, len(image_ids), len(image_ids))
+        metric_differences[draw] = (
+            pooled_metrics(candidate_statistics[indices])
+            - pooled_metrics(reference_statistics[indices])
+        )
+    intervals = np.quantile(metric_differences, [0.025, 0.975], axis=0)
+    reference_hallucinated = reference_statistics[:, 0].astype(bool)
+    candidate_hallucinated = candidate_statistics[:, 0].astype(bool)
+    improved = int(np.sum(reference_hallucinated & ~candidate_hallucinated))
+    worsened = int(np.sum(~reference_hallucinated & candidate_hallucinated))
+    discordant = improved + worsened
+    mcnemar_p = (
+        float(binomtest(min(improved, worsened), discordant, 0.5).pvalue)
+        if discordant
+        else 1.0
+    )
+    reference_recall = np.divide(
+        reference_statistics[:, 3],
+        reference_statistics[:, 4],
+        out=np.zeros(len(image_ids)),
+        where=reference_statistics[:, 4] > 0,
+    )
+    candidate_recall = np.divide(
+        candidate_statistics[:, 3],
+        candidate_statistics[:, 4],
+        out=np.zeros(len(image_ids)),
+        where=candidate_statistics[:, 4] > 0,
+    )
+    recall_difference = candidate_recall - reference_recall
+    recall_p = (
+        float(wilcoxon(recall_difference).pvalue)
+        if np.any(recall_difference)
+        else 1.0
+    )
+    names = ("CHAIRs", "CHAIRi", "Recall")
+    return {
+        "n_images": len(image_ids),
+        "reference": dict(zip(names, reference_metrics.tolist())),
+        "candidate": dict(zip(names, candidate_metrics.tolist())),
+        "difference": dict(
+            zip(names, (candidate_metrics - reference_metrics).tolist())
+        ),
+        "difference_ci95": {
+            name: [float(intervals[0, index]), float(intervals[1, index])]
+            for index, name in enumerate(names)
+        },
+        "mcnemar": {
+            "improved": improved,
+            "worsened": worsened,
+            "exact_p": mcnemar_p,
+        },
+        "recall_wilcoxon_p": recall_p,
+    }
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser()
+    parser.add_argument("reference")
+    parser.add_argument("candidates", nargs="+")
+    parser.add_argument("--bootstrap", type=int, default=10_000)
+    parser.add_argument("--seed", type=int, default=0)
+    parser.add_argument("--output")
+    args = parser.parse_args()
+    reference = load_sentences(args.reference)
+    result = {
+        "reference_path": args.reference,
+        "comparisons": {
+            candidate: paired_comparison(
+                reference,
+                load_sentences(candidate),
+                args.bootstrap,
+                args.seed,
+            )
+            for candidate in args.candidates
+        },
+    }
+    rendered = json.dumps(result, indent=2)
+    print(rendered)
+    if args.output:
+        output = Path(args.output)
+        output.parent.mkdir(parents=True, exist_ok=True)
+        output.write_text(rendered + "\n")
+
+
+if __name__ == "__main__":
     main()

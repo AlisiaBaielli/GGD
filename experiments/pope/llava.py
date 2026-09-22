@@ -23,8 +23,15 @@ from llava.mm_utils import tokenizer_image_token, get_model_name_from_path
 from transformers import AutoTokenizer
 from transformers.generation.logits_process import LogitsProcessorList
 
-from causal_core.eval_common import load_c_scores, resolve_method
-from causal_core.models.llava_sampling import evolve_only_sampling
+from causal_core.eval_common import (
+    load_c_scores,
+    resolve_method,
+    validate_method_flags,
+)
+from causal_core.models.llava_sampling import (
+    evolve_only_sampling,
+    install_ascd_llava15,
+)
 from causal_core.monitor import CausalMonitor, CausalLogitsProcessor
 from causal_core.only_eic import inject_eic_for_only
 from causal_core.vcd import add_diffusion_noise
@@ -86,8 +93,12 @@ def main():
                    help="With --use_only: offline EIC heads in CD branch (ONLY+EIC)")
     p.add_argument("--use_vcd", action="store_true", help="VCD baseline")
     p.add_argument("--use_m3id", action="store_true", help="M3ID baseline")
+    p.add_argument("--use_ascd", action="store_true", help="ASCD baseline")
+    p.add_argument("--ascd_alpha", type=float, default=1.0)
+    p.add_argument("--ascd_beta", type=float, default=0.1)
     p.add_argument("--noise_step", type=int, default=500,
                    help="VCD diffusion noise step")
+    p.add_argument("--limit", type=int)
     args = p.parse_args()
 
     torch.manual_seed(args.seed)
@@ -95,27 +106,14 @@ def main():
     random.seed(args.seed)
     np.random.seed(args.seed)
 
-    if args.no_hook:
-        method = "vanilla"
-    elif args.use_only:
-        method = "only_eic" if args.use_eic_heads else "only"
-    elif args.use_vcd:
-        method = "vcd"
-    elif args.use_m3id:
-        method = "m3id"
-    else:
-        method = "chall"
-        if args.c_scores_path is None:
-            raise ValueError("--c_scores_path is required for CHALL (default mode)")
-
-    needs_scores = method in ("chall", "only_eic")
+    validate_method_flags(args)
+    method, needs_scores = resolve_method(args)
     if needs_scores and args.c_scores_path is None:
         raise ValueError(f"--c_scores_path is required for method={method}")
 
     tokenizer = AutoTokenizer.from_pretrained(args.model_path, use_fast=False)
-    # CHALL's grounding monitor needs real attention weights (output_attentions),
-    # which the sdpa kernel returns as None; force eager for chall only.
-    attn_impl = "eager" if method == "chall" else "sdpa"
+    # CHALL needs returned attention weights; ASCD edits attention logits.
+    attn_impl = "eager" if method in ("chall", "ascd") else "sdpa"
     model = LlavaLlamaForCausalLM.from_pretrained(
         args.model_path, torch_dtype=torch.float16, device_map="auto",
         attn_implementation=attn_impl,
@@ -128,6 +126,12 @@ def main():
     image_processor = vision_tower.image_processor
 
     evolve_only_sampling()
+    if method == "ascd":
+        install_ascd_llava15(
+            model,
+            image_start=args.img_start,
+            image_length=args.img_len,
+        )
 
     monitor = None
     processors = LogitsProcessorList([])
@@ -153,6 +157,8 @@ def main():
             )
 
     pope_entries = [json.loads(l) for l in open(args.pope_path)]
+    if args.limit is not None:
+        pope_entries = pope_entries[:args.limit]
     log.info(f"POPE: {len(pope_entries)} questions, "
              f"{args.dataset_name}/{args.type}, method={method}, alpha={args.alpha}")
 
@@ -196,6 +202,9 @@ def main():
             use_only=(method in ("only", "only_eic")),
             use_vcd=(method == "vcd"),
             use_m3id=(method == "m3id"),
+            use_ascd=(method == "ascd"),
+            ascd_alpha=args.ascd_alpha,
+            ascd_beta=args.ascd_beta,
             enhance_layer_index=layer_for_only,
         )
         if processors and len(processors) > 0:

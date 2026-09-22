@@ -19,3 +19,38 @@ slurm-*.out
 
 *.jsonl
 chair.pkl
+
+# Generated artifacts and manuscript material
+/scores/
+/figures/
+/images/
+/assets/layer_spread_*.png
+*.pdf
+/thesis.txt
+/paper_additions/
+/rebuttal/
+/.pytest_cache/
+/tests/.pytest_cache/
+
+# Internal planning and paper-source material
+/docs/
+
+# Local exploratory code not included in the reproducibility release
+/causal_core/attention_maps.py
+/causal_core/causal_selection.py
+/causal_core/head_ablation.py
+/causal_core/head_patching.py
+/causal_core/image_corruptions.py
+/causal_core/spatial_grounding.py
+
+/experiments/*.sbatch
+/experiments/analyze_*.py
+/experiments/build_*.py
+/experiments/calibrate_*heads.py
+/experiments/evaluate_*.py
+/experiments/merge_causal_calibrations.py
+/experiments/train_*.py
+/experiments/figures/
+/requirements-figures.txt
+
+/tests/test_*.py

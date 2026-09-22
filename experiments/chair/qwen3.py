@@ -18,9 +18,17 @@ from PIL import Image
 
 from transformers import AutoProcessor
 from transformers.generation.logits_process import LogitsProcessorList
-from transformers.models.qwen3_vl.modeling_qwen3_vl import Qwen3VLForConditionalGeneration
+from transformers.models.qwen3_vl.modeling_qwen3_vl import (
+    Qwen3VLForConditionalGeneration,
+)
+
+from causal_core.eval_common import excluded_image_ids, select_image_files
 from causal_core.models.qwen3 import evolve_only_sampling_qwen3
-from causal_core.monitor import CausalMonitorQwen3, CausalLogitsProcessor, parse_image_id
+from causal_core.monitor import (
+    CausalLogitsProcessor,
+    CausalMonitorQwen3,
+    parse_image_id,
+)
 
 warnings.filterwarnings("ignore")
 logging.basicConfig(level=logging.INFO, format="[%(asctime)s] %(message)s",
@@ -39,12 +47,15 @@ def str2bool(v):
 def parse_args():
     p = argparse.ArgumentParser(description="CHAIR eval for Qwen3-VL")
     p.add_argument("--seed", type=int, default=3407)
+    p.add_argument("--image_seed", type=int)
+    p.add_argument("--per_image_seed", action="store_true")
     p.add_argument("--model_path", type=str,
                    default=str(REPO / "data/models/Qwen3-VL-8B-Instruct"))
     p.add_argument("--data_path", type=str,
                    default=str(REPO / "data/coco/val2014"))
     p.add_argument("--anno_path", type=str,
                    default=str(REPO / "data/coco/annotations/instances_val2014.json"))
+    p.add_argument("--exclude_image_ids_file", type=str)
     p.add_argument("--log_path", type=str, default=None)
     p.add_argument("--out_path", type=str, required=True)
     p.add_argument("--num_eval_samples", type=int, default=500)
@@ -57,6 +68,7 @@ def parse_args():
     p.add_argument("--temperature", type=float, default=1.0)
     p.add_argument("--top_p", type=float, default=1.0)
     p.add_argument("--method_name", type=str, default="chall")
+    p.add_argument("--record_efficiency", action="store_true")
     p.add_argument("--no_hook", action="store_true",
                    help="Disable CHALL monitor (vanilla / ONLY / VCD / M3ID)")
     p.add_argument("--use_only", action="store_true", help="ONLY baseline")
@@ -125,9 +137,15 @@ def main():
         causal_processor = CausalLogitsProcessor(monitor, alpha=args.alpha)
         processors = LogitsProcessorList([causal_processor])
 
-    img_files = sorted([f for f in os.listdir(args.data_path) if f.lower().endswith(".jpg")])
-    random.shuffle(img_files)
-    eval_files = img_files[:args.num_eval_samples]
+    with open(args.anno_path) as handle:
+        coco = json.load(handle)
+    image_seed = args.seed if args.image_seed is None else args.image_seed
+    eval_files = select_image_files(
+        [image["file_name"] for image in coco["images"]],
+        excluded_image_ids(args.exclude_image_ids_file),
+        args.num_eval_samples,
+        image_seed,
+    )
     logger.info(f"Evaluating {len(eval_files)} images from {args.data_path}")
 
     output_jsonl = os.path.join(
@@ -170,7 +188,16 @@ def main():
         if monitor is not None:
             monitor.set_img_positions(inputs.input_ids, image_token_id)
 
-        t1 = time.time()
+        if args.per_image_seed:
+            sample_seed = (args.seed * 1_000_003 + image_id) % (2**31)
+            random.seed(sample_seed)
+            np.random.seed(sample_seed)
+            torch.manual_seed(sample_seed)
+            torch.cuda.manual_seed_all(sample_seed)
+        if args.record_efficiency and torch.cuda.is_available():
+            torch.cuda.synchronize()
+            torch.cuda.reset_peak_memory_stats()
+        t1 = time.perf_counter()
         if getattr(args, 'use_vcd', False) or getattr(args, 'use_m3id', False):
             from causal_core.eval_common import import_vcd_baseline
             contrastive_generate, add_diffusion_noise = import_vcd_baseline("qwen3")
@@ -201,7 +228,9 @@ def main():
                 js_gamma=0.1,
                 logits_processor=processors,
             )
-        t2 = time.time()
+        if args.record_efficiency and torch.cuda.is_available():
+            torch.cuda.synchronize()
+        t2 = time.perf_counter()
 
         generated_ids_trimmed = [
             out_ids[len(in_ids):]
@@ -222,6 +251,14 @@ def main():
         logger.info("=" * 50)
 
         rec = {"image_id": int(image_id), "caption": caption}
+        if args.record_efficiency:
+            rec["generation_seconds"] = t2 - t1
+            rec["peak_memory_gib"] = (
+                torch.cuda.max_memory_allocated() / (1024**3)
+                if torch.cuda.is_available()
+                else None
+            )
+            rec["generated_tokens"] = int(generated_ids_trimmed[0].numel())
         with open(output_jsonl, "a") as f:
             json.dump(rec, f)
             f.write("\n")

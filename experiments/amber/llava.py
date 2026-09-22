@@ -28,8 +28,15 @@ from llava.conversation import Conversation, SeparatorStyle
 from llava.mm_utils import tokenizer_image_token
 from llava.model import LlavaLlamaForCausalLM
 
-from causal_core.eval_common import load_c_scores, resolve_method
-from causal_core.models.llava_sampling import evolve_only_sampling
+from causal_core.eval_common import (
+    load_c_scores,
+    resolve_method,
+    validate_method_flags,
+)
+from causal_core.models.llava_sampling import (
+    evolve_only_sampling,
+    install_ascd_llava15,
+)
 from causal_core.monitor import CausalLogitsProcessor, CausalMonitor
 from causal_core.only_eic import inject_eic_for_only
 from causal_core.vcd import add_diffusion_noise
@@ -65,6 +72,10 @@ def parse_args():
                    help="With --use_only: use offline EIC head set in CD branch (ONLY+EIC)")
     p.add_argument("--use_vcd", action="store_true")
     p.add_argument("--use_m3id", action="store_true")
+    p.add_argument("--use_ascd", action="store_true")
+    p.add_argument("--ascd_alpha", type=float, default=1.0)
+    p.add_argument("--ascd_beta", type=float, default=0.1)
+    p.add_argument("--limit", type=int)
     p.add_argument("--noise_step", type=int, default=500)
     p.add_argument("--js_gamma", type=float, default=0.2)
     p.add_argument("--ritual_alpha_pos", type=float, default=3.0)
@@ -80,6 +91,7 @@ def main():
     random.seed(args.seed)
     np.random.seed(args.seed)
 
+    validate_method_flags(args)
     method, needs_scores = resolve_method(args)
     # `--method_name` is an output label only (the answer path is explicit via
     # --output_file); decoding behavior must key off the canonical `method`.
@@ -89,7 +101,7 @@ def main():
     tokenizer = AutoTokenizer.from_pretrained(args.model_path, use_fast=False)
     # CHALL's grounding monitor needs real attention weights (output_attentions),
     # which the sdpa kernel returns as None; force eager for chall only.
-    attn_impl = "eager" if method == "chall" else "sdpa"
+    attn_impl = "eager" if method in ("chall", "ascd") else "sdpa"
     model = LlavaLlamaForCausalLM.from_pretrained(
         args.model_path, torch_dtype=torch.float16, device_map="auto",
         attn_implementation=attn_impl,
@@ -103,6 +115,12 @@ def main():
     image_processor = vision_tower.image_processor
 
     evolve_only_sampling()
+    if method == "ascd":
+        install_ascd_llava15(
+            model,
+            image_start=args.img_start,
+            image_length=args.img_len,
+        )
 
     monitor = None
     orig_fwd = None
@@ -134,6 +152,8 @@ def main():
 
     with open(args.amber_query) as f:
         queries = json.load(f)
+    if args.limit is not None:
+        queries = queries[:args.limit]
     log.info(f"AMBER method={method} alpha={args.alpha} n={len(queries)} -> {args.output_file}")
 
     os.makedirs(os.path.dirname(args.output_file) or ".", exist_ok=True)
@@ -186,6 +206,9 @@ def main():
             use_only=(method in ("only", "only_eic")),
             use_vcd=(method == "vcd"),
             use_m3id=(method == "m3id"),
+            use_ascd=(method == "ascd"),
+            ascd_alpha=args.ascd_alpha,
+            ascd_beta=args.ascd_beta,
             enhance_layer_index=layer_for_only,
             js_gamma=args.js_gamma,
             ritual_alpha_pos=args.ritual_alpha_pos,

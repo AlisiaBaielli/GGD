@@ -1,6 +1,5 @@
 #!/usr/bin/env bash
-# Full-scale thesis reproduction driver: runs ALL methods for one (model, benchmark)
-# at thesis scale, scores them, and prints the table.
+# Full-scale reproduction driver for one model and benchmark.
 #
 #   bash scripts/reproduce/run.sh <model> <bench>
 #     model : llava | qwen3 | internvl
@@ -31,8 +30,16 @@ esac
 
 ALPHA="${ALPHA:-0.7}"
 SEED="${SEED:-42}"
-CHAIR_SEED="${CHAIR_SEED:-3407}"
-NCHAIR="${NCHAIR:-500}"
+RECORD_EFFICIENCY="${RECORD_EFFICIENCY:-0}"
+if [[ "${RECORD_EFFICIENCY}" == "1" ]]; then
+  CHAIR_SEED="${CHAIR_SEED:-9917}"
+  NCHAIR="${NCHAIR:-53}"
+  : "${CHAIR_EXCLUSIONS_FILE:?Set CHAIR_EXCLUSIONS_FILE}"
+else
+  CHAIR_SEED="${CHAIR_SEED:-3407}"
+  NCHAIR="${NCHAIR:-500}"
+fi
+IMAGE_SEED="${IMAGE_SEED:-${CHAIR_SEED}}"
 SKIP_EXISTING="${SKIP_EXISTING:-0}"
 BASE="${OUT_ROOT}/reproduce/${MODEL}_${BENCH}"
 mkdir -p "${BASE}" "${OUT_ROOT}/slurm"
@@ -43,32 +50,71 @@ if [[ ! -f "${SCORES}" ]]; then
 fi
 
 # Decode-time method set (override with e.g. METHODS="vanilla chall")
+METHODS_REQUESTED="${METHODS:-}"
 if [[ -n "${METHODS:-}" ]]; then
   read -r -a METHODS <<< "${METHODS}"
 else
   METHODS=(vanilla vcd m3id only)
   [[ "${HAS_EIC}" == "1" ]] && METHODS+=(only_eic)
   METHODS+=(chall)
+  [[ "${MODEL}" == "llava" ]] && METHODS+=(ascd)
 fi
+
+for method in "${METHODS[@]}"; do
+  case "${method}" in
+    vanilla|vcd|m3id|only|chall) ;;
+    only_eic)
+      [[ "${HAS_EIC}" == "1" ]] || {
+        echo "Method only_eic is not supported for ${MODEL}" >&2
+        exit 2
+      }
+      ;;
+    ascd)
+      [[ "${MODEL}" == "llava" ]] || {
+        echo "Method ascd is only supported for llava" >&2
+        exit 2
+      }
+      ;;
+    *)
+      echo "Unknown method: ${method}" >&2
+      exit 2
+      ;;
+  esac
+done
 
 # Flags that select the decoding method in the benchmark scripts.
 # --c_scores_path is required by the Qwen3/InternVL scripts, so we always pass it
 # (it is only *used* by chall and only_eic; --no_hook disables the monitor).
 method_flags() {
   local base="--c_scores_path ${SCORES} --layer_index ${LAYER}"
+  local attention=""
+  [[ "${RECORD_EFFICIENCY}" == "1" && "${MODEL}" == "llava" ]] \
+    && attention="--attn_implementation eager"
   case "$1" in
-    vanilla)  echo "${base} --no_hook" ;;
-    vcd)      echo "${base} --no_hook --use_vcd" ;;
-    m3id)     echo "${base} --no_hook --use_m3id" ;;
-    only)     echo "${base} --no_hook --use_only" ;;
+    vanilla)  echo "${base} --no_hook ${attention}" ;;
+    vcd)      echo "${base} --no_hook --use_vcd ${attention}" ;;
+    m3id)     echo "${base} --no_hook --use_m3id ${attention}" ;;
+    only)     echo "${base} --no_hook --use_only ${attention}" ;;
     only_eic) echo "${base} --no_hook --use_only --use_eic_heads" ;;
     chall)    echo "${base} --alpha ${ALPHA}" ;;
+    ascd)
+      echo "${base} --no_hook --use_ascd --ascd_alpha 1.0 --ascd_beta 0.1"
+      ;;
+    *) return 1 ;;
   esac
 }
 
 skip_done() { [[ "${SKIP_EXISTING}" == "1" && -f "$1" ]]; }
 
 run_chair() {
+  local selection_args=()
+  [[ -n "${CHAIR_EXCLUSIONS_FILE:-}" ]] && selection_args+=(
+    --exclude_image_ids_file "${CHAIR_EXCLUSIONS_FILE}"
+  )
+  local efficiency_args=()
+  [[ "${RECORD_EFFICIENCY}" == "1" ]] && efficiency_args+=(
+    --record_efficiency --per_image_seed --image_seed "${IMAGE_SEED}"
+  )
   for m in "${METHODS[@]}"; do
     local out="${BASE}/${m}"; local metrics="${out}/chair_results.json"
     skip_done "${metrics}" && { echo "skip ${m}"; continue; }
@@ -77,14 +123,16 @@ run_chair() {
     python "experiments/chair/${MODEL}.py" --seed "${CHAIR_SEED}" --model_path "${MPATH}" \
       --data_path "${COCO_DIR}/val2014" --anno_path "${COCO_DIR}/annotations/instances_val2014.json" \
       --out_path "${out}" --num_eval_samples "${NCHAIR}" --max_new_tokens 128 \
-      --method_name "${m}" $(method_flags "${m}") || { echo "FAILED ${m}"; continue; }
+      --method_name "${m}" "${selection_args[@]}" "${efficiency_args[@]}" \
+      $(method_flags "${m}") || { echo "FAILED ${m}"; continue; }
     local cap; cap="$(ls -t "${out}"/*.jsonl 2>/dev/null | head -1)"
     [[ -n "${cap}" ]] && run_chair_metrics "${cap}" "${metrics}" || echo "no caption for ${m}"
   done
 }
 
 run_pope() {
-  # Thesis reports the COCO random split only (3,000 questions). Override with
+  # The reported protocol uses the COCO random split only (3,000 questions).
+  # Override with
   # POPE_TYPES="random popular adversarial" for the full POPE evaluation.
   local types="${POPE_TYPES:-random}"
   for m in "${METHODS[@]}"; do
@@ -127,7 +175,15 @@ run_mme() {
 }
 
 # ---- capability benchmarks (LLaVA + Qwen3 only) ----
-cap_methods() { echo vanilla vcd only chall; }
+cap_methods() {
+  if [[ -n "${METHODS_REQUESTED}" ]]; then
+    echo "${METHODS_REQUESTED}"
+  elif [[ "${MODEL}" == "llava" ]]; then
+    echo vanilla vcd only chall ascd
+  else
+    echo vanilla vcd only chall
+  fi
+}
 # CAP_LIMIT (optional): cap #questions for cheap validation; empty = full set.
 CAP_LIMIT="${CAP_LIMIT:-}"
 cap_limit_flag() { [[ -n "${CAP_LIMIT}" ]] && echo "--limit ${CAP_LIMIT}"; }
@@ -145,6 +201,7 @@ run_mmvp() {
       vcd)      extra+=" --use_vcd" ;;
       only)     extra+=" --use_only" ;;
       chall)    extra+=" --alpha ${ALPHA}" ;;
+      ascd)     extra+=" --use_ascd --ascd_alpha 1.0 --ascd_beta 0.1" ;;
     esac
     echo "=== ${MODEL} MMVP ${m} ==="
     if python "experiments/analysis/mmvp_$(cap_suffix).py" --model_path "${MPATH}" \
@@ -174,7 +231,7 @@ run_mmbench() {
 
 # ---- mmvp/mmbench guard ----
 if [[ "${BENCH}" == "mmvp" || "${BENCH}" == "mmbench" ]] && [[ "${MODEL}" == "internvl" ]]; then
-  echo "Capability benchmarks (${BENCH}) are LLaVA/Qwen3 only in the thesis." >&2
+  echo "Capability benchmarks (${BENCH}) are available for LLaVA/Qwen3 only." >&2
   exit 1
 fi
 
@@ -193,7 +250,7 @@ echo "================ ${MODEL} ${BENCH} table ================"
 BASE="${BASE}" BENCH="${BENCH}" python - <<'PY'
 import json, os, glob
 base = os.environ["BASE"]; bench = os.environ["BENCH"]
-methods = ["vanilla", "vcd", "m3id", "only", "only_eic", "chall"]
+methods = ["vanilla", "vcd", "m3id", "only", "only_eic", "chall", "ascd"]
 def jload(p):
     try:
         return json.load(open(p))
@@ -231,13 +288,13 @@ elif bench == "mme":
         print(f"{m:<10}{d.get('mme_total',0):11.2f}{d.get('perception_total',0):10.2f}{d.get('cognition_total',0):11.2f}")
 elif bench == "mmvp":
     print(f"{'method':<10}{'Single%':>9}{'Pair%':>9}")
-    for m in ["vanilla","vcd","only","chall"]:
+    for m in ["vanilla","vcd","only","chall","ascd"]:
         d = jload(os.path.join(base, m, f"{m}_summary.json"))
         if not d: continue
         print(f"{m:<10}{d.get('single_acc',0)*100:9.2f}{d.get('pair_acc',0)*100:9.2f}")
 elif bench == "mmbench":
     print(f"{'method':<10}{'Acc%':>9}")
-    for m in ["vanilla","vcd","only","chall"]:
+    for m in ["vanilla","vcd","only","chall","ascd"]:
         d = jload(os.path.join(base, m, f"mmbench_{m}.json"))
         if not d: continue
         print(f"{m:<10}{d.get('accuracy',0):9.2f}")

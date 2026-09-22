@@ -176,12 +176,20 @@ def main():
         disable_torch_init()
         model_path = os.path.expanduser(args.model_name)
         model_name = get_model_name_from_path(model_path)
-        tokenizer, model, image_processor, _ = load_pretrained_model(model_path, args.model_base, model_name)
+        tokenizer, model, image_processor, _ = load_pretrained_model(
+            model_path,
+            args.model_base,
+            model_name,
+            attn_implementation="eager",
+        )
 
         if hasattr(model, "config"):
             try:
                 model.config.output_attentions = True
                 model.config.return_dict = True
+                model.config._attn_implementation = "eager"
+                if hasattr(model, "model") and hasattr(model.model, "config"):
+                    model.model.config._attn_implementation = "eager"
             except Exception:
                 pass
 

@@ -19,19 +19,7 @@ sys.path.insert(0, str(REPO))
 
 import numpy as np
 import torch
-import torch.nn.functional as F
-from PIL import Image
-
-from llava.model import LlavaLlamaForCausalLM
-from llava.conversation import conv_templates, SeparatorStyle, Conversation
-from llava.mm_utils import tokenizer_image_token
-from llava.constants import IMAGE_TOKEN_INDEX, DEFAULT_IMAGE_TOKEN
-from transformers import AutoTokenizer
-from transformers.generation.logits_process import LogitsProcessorList
-
-from causal_core.models.llava_sampling import evolve_only_sampling
-from causal_core.vcd import add_diffusion_noise
-from causal_core.monitor import CausalMonitor, CausalLogitsProcessor
+from causal_core.eval_common import excluded_image_ids, select_image_files
 
 warnings.filterwarnings("ignore")
 
@@ -41,22 +29,95 @@ def parse_args():
     p.add_argument("--model_path", type=str, default=str(REPO / "data/models/llava-v1.5-7b"))
     p.add_argument("--data_path", type=str, default=str(REPO / "data/coco/val2014"))
     p.add_argument("--anno_path", type=str, default=str(REPO / "data/coco/annotations/instances_val2014.json"))
-    p.add_argument("--c_scores_path", type=str, default=str(REPO / "results/calibration/llava_zscore_K7.pt"))
+    p.add_argument("--c_scores_path", type=str, default=str(REPO / "scores/llava_eic.pt"))
     p.add_argument("--layer_index", type=int, default=1)
     p.add_argument("--alpha", type=float, default=0.7)
     p.add_argument("--num_eval_samples", type=int, default=50)
     p.add_argument("--max_new_tokens", type=int, default=128)
-    p.add_argument("--warmup", type=int, default=3, help="warmup generations per method (excluded from stats)")
+    p.add_argument("--warmup", type=int, default=3, help="warmup generations for direct benchmarking")
+    p.add_argument("--exclude_image_ids_file")
+    p.add_argument("--image_seed", type=int)
+    p.add_argument("--caption_files", nargs="+")
+    p.add_argument("--reference", default="vanilla")
     p.add_argument("--out_path", type=str, required=True)
     return p.parse_args()
 
-def load_chair_images(anno_path, data_path, n, seed=3407):
+
+def summarize_caption_records(path):
+    with open(path) as handle:
+        records = [json.loads(line) for line in handle if line.strip()]
+    required = {"image_id", "generation_seconds", "peak_memory_gib", "generated_tokens"}
+    if not records or any(not required.issubset(record) for record in records):
+        raise ValueError(f"{path} does not contain efficiency measurements")
+    latency = np.asarray([record["generation_seconds"] for record in records])
+    memory = np.asarray([record["peak_memory_gib"] for record in records])
+    tokens = np.asarray([record["generated_tokens"] for record in records])
+    return records, {
+        "n": len(records),
+        "latency_mean_s": float(latency.mean()),
+        "latency_std_s": float(latency.std(ddof=1)) if len(latency) > 1 else 0.0,
+        "latency_median_s": float(np.median(latency)),
+        "peak_memory_gib": float(memory.max()),
+        "generated_tokens_mean": float(tokens.mean()),
+        "tokens_per_second": float(tokens.sum() / latency.sum()),
+    }
+
+
+def analyze_caption_files(args):
+    paths = {}
+    for item in args.caption_files:
+        name, path = item.split(":", 1)
+        paths[name] = path
+    loaded = {
+        name: summarize_caption_records(path)
+        for name, path in paths.items()
+    }
+    if args.reference not in loaded:
+        raise ValueError(f"Reference method {args.reference!r} was not provided")
+    reference_ids = [
+        record["image_id"] for record in loaded[args.reference][0]
+    ]
+    for name, (records, _) in loaded.items():
+        if [record["image_id"] for record in records] != reference_ids:
+            raise ValueError(f"Image IDs or ordering differ for {name}")
+    summaries = {name: summary for name, (_, summary) in loaded.items()}
+    reference = summaries[args.reference]
+    for summary in summaries.values():
+        summary["latency_vs_reference"] = (
+            summary["latency_mean_s"] / reference["latency_mean_s"]
+        )
+        summary["memory_vs_reference"] = (
+            summary["peak_memory_gib"] / reference["peak_memory_gib"]
+        )
+    result = {
+        "warmup_records_excluded": 0,
+        "reference": args.reference,
+        "methods": summaries,
+    }
+    output = Path(args.out_path)
+    output.parent.mkdir(parents=True, exist_ok=True)
+    output.write_text(json.dumps(result, indent=2) + "\n")
+    print(json.dumps(result, indent=2))
+
+
+def load_chair_images(
+    anno_path,
+    n,
+    seed=3407,
+    excluded_ids=None,
+):
     """Same selection as the main CHAIR runs."""
     anno = json.load(open(anno_path))
-    images = anno["images"]
-    rng = random.Random(); rng.seed(seed)
-    rng.shuffle(images)
-    return images[:n]
+    images_by_filename = {
+        image["file_name"]: image for image in anno["images"]
+    }
+    selected = select_image_files(
+        list(images_by_filename),
+        excluded_ids or set(),
+        n,
+        seed,
+    )
+    return [images_by_filename[filename] for filename in selected]
 
 def prepare_prompt(tokenizer):
     """LLaVA-1.5 'Please describe this image in detail.' prompt (CHAIR standard)."""
@@ -122,6 +183,26 @@ def time_method(name, model, tokenizer, image_processor, images_meta, args,
 
 def main():
     args = parse_args()
+    if args.caption_files:
+        analyze_caption_files(args)
+        return
+    global F, Image, LlavaLlamaForCausalLM, conv_templates, SeparatorStyle
+    global Conversation, tokenizer_image_token, IMAGE_TOKEN_INDEX
+    global DEFAULT_IMAGE_TOKEN, AutoTokenizer, LogitsProcessorList
+    global evolve_only_sampling, add_diffusion_noise, CausalMonitor
+    global CausalLogitsProcessor
+    import torch.nn.functional as F
+    from PIL import Image
+    from llava.model import LlavaLlamaForCausalLM
+    from llava.conversation import conv_templates, SeparatorStyle, Conversation
+    from llava.mm_utils import tokenizer_image_token
+    from llava.constants import IMAGE_TOKEN_INDEX, DEFAULT_IMAGE_TOKEN
+    from transformers import AutoTokenizer
+    from transformers.generation.logits_process import LogitsProcessorList
+    from causal_core.models.llava_sampling import evolve_only_sampling
+    from causal_core.vcd import add_diffusion_noise
+    from causal_core.monitor import CausalMonitor, CausalLogitsProcessor
+
     torch.manual_seed(args.seed); torch.cuda.manual_seed_all(args.seed)
     random.seed(args.seed); np.random.seed(args.seed)
 
@@ -140,9 +221,14 @@ def main():
     evolve_only_sampling()
     print(f"[load] model ready (device={model.device})")
 
-    images_meta = load_chair_images(args.anno_path, args.data_path,
-                                    args.num_eval_samples, seed=args.seed)
-    print(f"[data] {len(images_meta)} CHAIR images (seed={args.seed})")
+    image_seed = args.seed if args.image_seed is None else args.image_seed
+    images_meta = load_chair_images(
+        args.anno_path,
+        args.num_eval_samples,
+        seed=image_seed,
+        excluded_ids=excluded_image_ids(args.exclude_image_ids_file),
+    )
+    print(f"[data] {len(images_meta)} CHAIR images (seed={image_seed})")
 
     payload = torch.load(args.c_scores_path, map_location="cpu", weights_only=False)
     if isinstance(payload, dict):

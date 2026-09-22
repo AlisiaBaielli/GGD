@@ -21,7 +21,10 @@ from llava.model import LlavaLlamaForCausalLM
 from llava.mm_utils import tokenizer_image_token, process_images
 from transformers import AutoTokenizer
 from transformers.generation.logits_process import LogitsProcessorList
-from causal_core.models.llava_sampling import evolve_only_sampling
+from causal_core.models.llava_sampling import (
+    evolve_only_sampling,
+    install_ascd_llava15,
+)
 from causal_core.vcd import add_diffusion_noise
 
 from PIL import Image
@@ -78,7 +81,7 @@ def parse_args():
                    help="CircularEval: test all option rotations")
     p.add_argument("--single_pred_prompt", action="store_true", default=True)
     p.add_argument("--method", type=str, required=True,
-                   choices=["vanilla", "only", "chall", "vcd", "m3id"])
+                   choices=["vanilla", "only", "chall", "vcd", "m3id", "ascd"])
     p.add_argument("--c_scores_path", type=str,
                    default=str(REPO / "scores/llava_eic.pt"))
     p.add_argument("--noise_step", type=int, default=500)
@@ -90,6 +93,8 @@ def parse_args():
     p.add_argument("--beta", type=float, default=0.1)
     p.add_argument("--alpha_pos", type=float, default=3.0)
     p.add_argument("--alpha_neg", type=float, default=1.0)
+    p.add_argument("--ascd_alpha", type=float, default=1.0)
+    p.add_argument("--ascd_beta", type=float, default=0.1)
     p.add_argument("--limit", type=int, default=None,
                    help="Cap number of questions (validation only; default = full set).")
     return p.parse_args()
@@ -106,6 +111,9 @@ def main():
     tokenizer = AutoTokenizer.from_pretrained(args.model_path, use_fast=False)
     model = LlavaLlamaForCausalLM.from_pretrained(
         args.model_path, torch_dtype=torch.float16, device_map="auto",
+        attn_implementation=(
+            "eager" if args.method in ("chall", "ascd") else "sdpa"
+        ),
     )
     model.eval()
 
@@ -116,6 +124,12 @@ def main():
     image_processor = vision_tower.image_processor
 
     evolve_only_sampling()
+    if args.method == "ascd":
+        install_ascd_llava15(
+            model,
+            image_start=args.img_start,
+            image_length=args.img_len,
+        )
 
     monitor = None
     processors = LogitsProcessorList()
@@ -189,6 +203,9 @@ def main():
                 use_only=use_only,
                 use_vcd=(args.method == "vcd"),
                 use_m3id=(args.method == "m3id"),
+                use_ascd=(args.method == "ascd"),
+                ascd_alpha=args.ascd_alpha,
+                ascd_beta=args.ascd_beta,
                 use_ritual=False,
                 ritual_alpha_pos=args.alpha_pos,
                 ritual_alpha_neg=args.alpha_neg,
