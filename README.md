@@ -53,7 +53,7 @@ data/
     └── mmbench_dev_20230712.tsv
 ```
 
-Datasets and model weights are not redistributed.
+Download the model weights and datasets from their official sources, then place them in the directory structure shown above.
 
 ## Calibration
 
@@ -97,13 +97,7 @@ done
 unset METHODS
 ```
 
-The reported seeds and evaluation settings are encoded in `scripts/reproduce/run.sh`. On SLURM, submit the complete grid with:
-
-```bash
-bash scripts/reproduce/submit_all.sh
-```
-
-Outputs are written under `results/reproduce/`.
+The reported seeds and evaluation settings are encoded in `scripts/reproduce/run.sh`. Outputs are written under `results/reproduce/`.
 
 ## Analysis
 
