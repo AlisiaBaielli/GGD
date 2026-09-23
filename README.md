@@ -77,10 +77,6 @@ bash scripts/reproduce/run.sh <model> <benchmark>
 
 Models are `llava`, `qwen3`, and `internvl`. Benchmarks are `chair`, `pope`, `amber`, and `mme`, with `mmvp` and `mmbench` also available for LLaVA and Qwen3-VL.
 
-```bash
-bash scripts/reproduce/run.sh llava chair
-```
-
 ## Reproduce the main results
 
 After calibration, reproduce the main hallucination results with:
