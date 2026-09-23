@@ -69,27 +69,41 @@ Checkpoints are written to `scores/`.
 
 ## Evaluation
 
-Run one model and benchmark:
+Run a single model and benchmark:
 
 ```bash
 bash scripts/reproduce/run.sh <model> <benchmark>
 ```
 
-Supported models are `llava`, `qwen3`, and `internvl`. Hallucination benchmarks are `chair`, `pope`, `amber`, and `mme`. Capability benchmarks `mmvp` and `mmbench` are available for LLaVA and Qwen3-VL.
-
-For example:
+Models are `llava`, `qwen3`, and `internvl`. Benchmarks are `chair`, `pope`, `amber`, and `mme`, with `mmvp` and `mmbench` also available for LLaVA and Qwen3-VL.
 
 ```bash
 bash scripts/reproduce/run.sh llava chair
 ```
 
-Submit the complete SLURM evaluation grid with:
+## Reproduce the main results
+
+After calibration, reproduce the main hallucination results with:
+
+```bash
+export METHODS="vanilla vcd m3id only ggd"
+
+for model in llava qwen3 internvl; do
+  for benchmark in chair pope amber mme; do
+    bash scripts/reproduce/run.sh "${model}" "${benchmark}"
+  done
+done
+
+unset METHODS
+```
+
+The reported seeds and evaluation settings are encoded in `scripts/reproduce/run.sh`. On SLURM, submit the complete grid with:
 
 ```bash
 bash scripts/reproduce/submit_all.sh
 ```
 
-Outputs are written to `results/`.
+Outputs are written under `results/reproduce/`.
 
 ## Analysis
 
