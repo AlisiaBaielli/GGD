@@ -1,6 +1,6 @@
 # Grounding-Guided Decoding
 
-Anonymous implementation of Grounding-Guided Decoding (GGD), a training-free method that calibrates an environment-invariant grounding sensor offline and adaptively sharpens decoding when visual grounding weakens.
+Grounding-Guided Decoding (GGD) is a training-free method that calibrates an environment-invariant grounding sensor offline and adaptively sharpens decoding when visual grounding weakens.
 
 ![Grounding-Guided Decoding overview](assets/method.png)
 
