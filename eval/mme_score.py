@@ -38,6 +38,15 @@ def load_jsonl(path):
     return rows
 
 
+def question_key(row):
+    prompt = row.get("question", row.get("prompt"))
+    if prompt is None:
+        raise ValueError(
+            "MME rows must contain either 'question' or 'prompt'"
+        )
+    return str(row["question_id"]), str(prompt).strip()
+
+
 def main():
     p = argparse.ArgumentParser()
     p.add_argument("--answers_file", required=True)
@@ -47,25 +56,28 @@ def main():
 
     gt = {}
     for r in load_jsonl(args.question_file):
-        qid = str(r["question_id"])
-        gt[qid] = {
+        key = question_key(r)
+        gt[key] = {
             "answer": str(r["answer"]).strip().lower(),
-            "category": r.get("category") or qid.split("/")[0],
-            "image": r.get("image", qid.rsplit("/", 1)[0]),
+            "category": r.get("category") or key[0].split("/")[0],
+            "image": r.get("image", key[0].rsplit("/", 1)[0]),
         }
 
-    preds = {str(r["question_id"]): parse_yes_no(r.get("text", "")) for r in load_jsonl(args.answers_file)}
+    preds = {
+        question_key(r): parse_yes_no(r.get("text", ""))
+        for r in load_jsonl(args.answers_file)
+    }
 
     # per-category bookkeeping
     cat_q_total = defaultdict(int)
     cat_q_correct = defaultdict(int)
     img_correct = defaultdict(lambda: [0, 0])  # (category, image) -> [n_questions, n_correct]
 
-    for qid, g in gt.items():
-        if qid not in preds:
+    for key, g in gt.items():
+        if key not in preds:
             continue
         cat = g["category"]
-        correct = int(preds[qid] == g["answer"])
+        correct = int(preds[key] == g["answer"])
         cat_q_total[cat] += 1
         cat_q_correct[cat] += correct
         key = (cat, g["image"])

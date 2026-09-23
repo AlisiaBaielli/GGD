@@ -22,7 +22,11 @@ from transformers.models.internvl.modeling_internvl_real import (
     InternVLForConditionalGeneration,
 )
 
-from ggd.eval_common import excluded_image_ids, select_image_files
+from ggd.eval_common import (
+    chair_protocol_image_files,
+    excluded_image_ids,
+    select_image_files,
+)
 from ggd.models.internvl import evolve_only_sampling_internvl
 from ggd.monitor import (
     CausalLogitsProcessor,
@@ -139,8 +143,14 @@ def main():
     with open(args.anno_path) as handle:
         coco = json.load(handle)
     image_seed = args.seed if args.image_seed is None else args.image_seed
+    image_files = chair_protocol_image_files(
+        coco["images"],
+        "internvl",
+        image_seed=args.image_seed,
+        exclusions_file=args.exclude_image_ids_file,
+    )
     eval_files = select_image_files(
-        [image["file_name"] for image in coco["images"]],
+        image_files,
         excluded_image_ids(args.exclude_image_ids_file),
         args.num_eval_samples,
         image_seed,

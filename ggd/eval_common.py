@@ -34,6 +34,27 @@ def excluded_image_ids(path: str | None) -> set[int]:
     return {int(value) for value in values}
 
 
+def chair_protocol_image_files(
+    images: list[dict],
+    model: str,
+    *,
+    image_seed: int | None = None,
+    exclusions_file: str | None = None,
+) -> list[str]:
+    """Return filenames in the historical order used by each CHAIR runner."""
+    if model not in {"llava", "qwen3", "internvl"}:
+        raise ValueError(f"Unknown CHAIR model: {model}")
+
+    filenames = [image["file_name"] for image in images]
+    if (
+        model in {"qwen3", "internvl"}
+        and image_seed is None
+        and exclusions_file is None
+    ):
+        filenames.sort()
+    return filenames
+
+
 def select_image_files(
     image_files: list[str],
     excluded_ids: set[int],

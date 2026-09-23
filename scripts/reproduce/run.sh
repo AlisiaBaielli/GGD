@@ -43,6 +43,7 @@ IMAGE_SEED="${IMAGE_SEED:-${CHAIR_SEED}}"
 SKIP_EXISTING="${SKIP_EXISTING:-0}"
 BASE="${OUT_ROOT}/reproduce/${MODEL}_${BENCH}"
 mkdir -p "${BASE}" "${OUT_ROOT}/slurm"
+RUN_FAIL=0
 
 if [[ ! -f "${SCORES}" ]]; then
   echo "Missing calibration scores: ${SCORES} (run scripts/calibrate/${MODEL}.sh)" >&2
@@ -129,9 +130,19 @@ run_chair() {
       --data_path "${COCO_DIR}/val2014" --anno_path "${COCO_DIR}/annotations/instances_val2014.json" \
       --out_path "${out}" --num_eval_samples "${NCHAIR}" --max_new_tokens 128 \
       --method_name "${m}" "${selection_args[@]}" "${efficiency_args[@]}" \
-      $(method_flags "${m}") || { echo "FAILED ${m}"; continue; }
+      $(method_flags "${m}") || {
+        echo "FAILED ${m}"
+        RUN_FAIL=1
+        continue
+      }
     local cap; cap="$(ls -t "${out}"/*.jsonl 2>/dev/null | head -1)"
-    [[ -n "${cap}" ]] && run_chair_metrics "${cap}" "${metrics}" || echo "no caption for ${m}"
+    if [[ -z "${cap}" ]]; then
+      echo "no caption for ${m}"
+      RUN_FAIL=1
+    elif ! run_chair_metrics "${cap}" "${metrics}"; then
+      echo "FAILED scoring ${m}"
+      RUN_FAIL=1
+    fi
   done
 }
 
@@ -145,10 +156,15 @@ run_pope() {
     for TYPE in ${types}; do
       skip_done "${out}/done_${TYPE}" && continue
       echo "=== ${MODEL} POPE ${m}/${TYPE} ==="
-      python "experiments/pope/${MODEL}.py" --seed "${SEED}" --model_path "${MPATH}" \
+      if python "experiments/pope/${MODEL}.py" --seed "${SEED}" --model_path "${MPATH}" \
         --data_path "${COCO_DIR}/val2014" --pope_path "${POPE_DIR}/coco_pope_${TYPE}.json" \
         --type "${TYPE}" --dataset_name coco --out_path "${out}" \
-        $(method_flags "${m}") && touch "${out}/done_${TYPE}" || echo "FAILED ${m}/${TYPE}"
+        $(method_flags "${m}"); then
+        touch "${out}/done_${TYPE}"
+      else
+        echo "FAILED ${m}/${TYPE}"
+        RUN_FAIL=1
+      fi
     done
   done
 }
@@ -161,8 +177,16 @@ run_amber() {
     echo "=== ${MODEL} AMBER ${m} ==="
     python "experiments/amber/${MODEL}.py" --seed "${SEED}" --model_path "${MPATH}" \
       --amber_query "${AMBER_QUERY}" --amber_image_dir "${AMBER_IMAGE_DIR}" \
-      --output_file "${infj}" $(method_flags "${m}") || { echo "FAILED ${m}"; continue; }
-    ( cd "${AMBER_TOOLKIT}" && python inference.py --inference_data "${infj}" --evaluation_type g ) | tee "${met}"
+      --output_file "${infj}" $(method_flags "${m}") || {
+        echo "FAILED ${m}"
+        RUN_FAIL=1
+        continue
+      }
+    if ! ( cd "${AMBER_TOOLKIT}" && python inference.py \
+      --inference_data "${infj}" --evaluation_type g ) | tee "${met}"; then
+      echo "FAILED scoring ${m}"
+      RUN_FAIL=1
+    fi
   done
 }
 
@@ -174,8 +198,16 @@ run_mme() {
     echo "=== ${MODEL} MME ${m} ==="
     python "experiments/mme/${MODEL}.py" --seed "${SEED}" --model_path "${MPATH}" \
       --image_folder "${MME_IMAGE_DIR}" --question_file "${MME_QUESTIONS}" \
-      --answers_file "${ans}" $(method_flags "${m}") || { echo "FAILED ${m}"; continue; }
-    python eval/mme_score.py --answers_file "${ans}" --question_file "${MME_QUESTIONS}" --out_path "${sc}"
+      --answers_file "${ans}" $(method_flags "${m}") || {
+        echo "FAILED ${m}"
+        RUN_FAIL=1
+        continue
+      }
+    if ! python eval/mme_score.py --answers_file "${ans}" \
+      --question_file "${MME_QUESTIONS}" --out_path "${sc}"; then
+      echo "FAILED scoring ${m}"
+      RUN_FAIL=1
+    fi
   done
 }
 
@@ -214,7 +246,9 @@ run_mmvp() {
       --eic_scores_path "${SCORES}" --layer_index "${LAYER}" --out_path "${out}" ${extra}; then
       CAP_OK=$((CAP_OK+1))
     else
-      echo "FAILED ${m}"; CAP_FAIL=$((CAP_FAIL+1))
+      echo "FAILED ${m}"
+      CAP_FAIL=$((CAP_FAIL+1))
+      RUN_FAIL=1
     fi
   done
 }
@@ -230,7 +264,9 @@ run_mmbench() {
       --alpha "${ALPHA}" --method "${m}" --out_dir "${out}" $(cap_limit_flag); then
       CAP_OK=$((CAP_OK+1))
     else
-      echo "FAILED ${m}"; CAP_FAIL=$((CAP_FAIL+1))
+      echo "FAILED ${m}"
+      CAP_FAIL=$((CAP_FAIL+1))
+      RUN_FAIL=1
     fi
   done
 }
@@ -310,5 +346,10 @@ echo "Outputs under ${BASE}"
 # Capability benches: fail loudly if no method produced output.
 if [[ "${BENCH}" == "mmvp" || "${BENCH}" == "mmbench" ]] && [[ "${CAP_OK}" -eq 0 ]]; then
   echo "ERROR: all ${BENCH} methods failed (${CAP_FAIL} failures)" >&2
+  exit 1
+fi
+
+if [[ "${RUN_FAIL}" -ne 0 ]]; then
+  echo "ERROR: one or more ${MODEL} ${BENCH} runs failed" >&2
   exit 1
 fi

@@ -32,6 +32,7 @@ from llava.model import LlavaLlamaForCausalLM
 
 from ggd.eval_common import (
     caption_output_path,
+    chair_protocol_image_files,
     excluded_image_ids,
     load_eic_scores,
     resolve_method,
@@ -202,16 +203,22 @@ def main():
 
     with open(args.anno_path) as f:
         coco = json.load(f)
-    images = coco["images"]
     image_seed = args.seed if args.image_seed is None else args.image_seed
     exclusions = excluded_image_ids(args.exclude_image_ids_file)
     selected_files = select_image_files(
-        [image["file_name"] for image in images],
+        chair_protocol_image_files(
+            coco["images"],
+            "llava",
+            image_seed=args.image_seed,
+            exclusions_file=args.exclude_image_ids_file,
+        ),
         exclusions,
         args.num_eval_samples,
         image_seed,
     )
-    images_by_filename = {image["file_name"]: image for image in images}
+    images_by_filename = {
+        image["file_name"]: image for image in coco["images"]
+    }
     images = [images_by_filename[filename] for filename in selected_files]
 
     out_file = caption_output_path(args.out_path, label)

@@ -22,7 +22,11 @@ from transformers.models.qwen3_vl.modeling_qwen3_vl import (
     Qwen3VLForConditionalGeneration,
 )
 
-from ggd.eval_common import excluded_image_ids, select_image_files
+from ggd.eval_common import (
+    chair_protocol_image_files,
+    excluded_image_ids,
+    select_image_files,
+)
 from ggd.models.qwen3 import evolve_only_sampling_qwen3
 from ggd.monitor import (
     CausalLogitsProcessor,
@@ -140,8 +144,14 @@ def main():
     with open(args.anno_path) as handle:
         coco = json.load(handle)
     image_seed = args.seed if args.image_seed is None else args.image_seed
+    image_files = chair_protocol_image_files(
+        coco["images"],
+        "qwen3",
+        image_seed=args.image_seed,
+        exclusions_file=args.exclude_image_ids_file,
+    )
     eval_files = select_image_files(
-        [image["file_name"] for image in coco["images"]],
+        image_files,
         excluded_image_ids(args.exclude_image_ids_file),
         args.num_eval_samples,
         image_seed,
