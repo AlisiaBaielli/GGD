@@ -19,7 +19,7 @@ sys.path.insert(0, str(REPO))
 
 import numpy as np
 import torch
-from ggd.eval_common import excluded_image_ids, select_image_files
+from roam.eval_common import excluded_image_ids, select_image_files
 
 warnings.filterwarnings("ignore")
 
@@ -189,8 +189,8 @@ def main():
     global F, Image, LlavaLlamaForCausalLM, conv_templates, SeparatorStyle
     global Conversation, tokenizer_image_token, IMAGE_TOKEN_INDEX
     global DEFAULT_IMAGE_TOKEN, AutoTokenizer, LogitsProcessorList
-    global evolve_only_sampling, add_diffusion_noise, CausalMonitor
-    global CausalLogitsProcessor
+    global evolve_only_sampling, add_diffusion_noise, ROAMMonitor
+    global ROAMLogitsProcessor
     import torch.nn.functional as F
     from PIL import Image
     from llava.model import LlavaLlamaForCausalLM
@@ -199,9 +199,9 @@ def main():
     from llava.constants import IMAGE_TOKEN_INDEX, DEFAULT_IMAGE_TOKEN
     from transformers import AutoTokenizer
     from transformers.generation.logits_process import LogitsProcessorList
-    from ggd.models.llava_sampling import evolve_only_sampling
-    from ggd.vcd import add_diffusion_noise
-    from ggd.monitor import CausalMonitor, CausalLogitsProcessor
+    from roam.models.llava_sampling import evolve_only_sampling
+    from roam.vcd import add_diffusion_noise
+    from roam.monitor import ROAMMonitor, ROAMLogitsProcessor
 
     torch.manual_seed(args.seed); torch.cuda.manual_seed_all(args.seed)
     random.seed(args.seed); np.random.seed(args.seed)
@@ -290,16 +290,16 @@ def main():
                                         images_meta, args, gen_only)
     results["ONLY"] = dict(times=times_only, peak_mem_gib=mem_only)
 
-    monitor = CausalMonitor(model, args.layer_index, eic_scores, img_start=35, img_len=576)
+    monitor = ROAMMonitor(model, args.layer_index, eic_scores, img_start=35, img_len=576)
     orig_fwd = monitor.install_qk_hook()
-    proc = CausalLogitsProcessor(monitor, alpha=args.alpha)
-    def gen_ggd(image, _):
+    proc = ROAMLogitsProcessor(monitor, alpha=args.alpha)
+    def gen_roam(image, _):
         return dict(images=image, images_pos=None, images_neg=None,
                     use_only=False, enhance_layer_index=args.layer_index,
                     **common)
-    print("\n[run] Ours (Causal)")
+    print("\n[run] ROAM")
     times_s, mem_s = time_method("Ours", model, tokenizer, image_processor,
-                                  images_meta, args, gen_ggd, logits_processor=proc)
+                                  images_meta, args, gen_roam, logits_processor=proc)
     monitor.restore(orig_fwd)
     results["Ours"] = dict(times=times_s, peak_mem_gib=mem_s)
 

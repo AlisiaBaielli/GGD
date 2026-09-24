@@ -3,7 +3,7 @@
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-ENV_NAME="${1:-ggd}"
+ENV_NAME="${1:-roam}"
 
 if ! command -v conda >/dev/null 2>&1; then
   echo "ERROR: conda is required. Install Miniconda or Anaconda and add it to PATH." >&2
@@ -26,11 +26,11 @@ python -m pip install -r "${REPO_ROOT}/requirements.txt"
 
 export REPO_ROOT
 export PYTHONPATH="${REPO_ROOT}:${REPO_ROOT}/transformers/src"
-export PYTHONSTARTUP="${REPO_ROOT}/ggd/_python_startup.py"
+export PYTHONSTARTUP="${REPO_ROOT}/roam/_python_startup.py"
 
 echo ""
 echo "Done. Activate with:"
 echo "  conda activate ${ENV_NAME}"
 echo "  export PYTHONPATH=\"\$(pwd):\$(pwd)/transformers/src:\${PYTHONPATH:-}\""
-echo "  export PYTHONSTARTUP=\"\$(pwd)/ggd/_python_startup.py\""
+echo "  export PYTHONSTARTUP=\"\$(pwd)/roam/_python_startup.py\""
 echo "Or source scripts/_env.sh from any run script."

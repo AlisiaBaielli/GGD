@@ -13,19 +13,19 @@ sys.path.insert(0, str(REPO))
 
 from transformers import AutoProcessor, InternVLForConditionalGeneration
 from transformers.generation.logits_process import LogitsProcessorList
-from ggd.eval_common import load_eic_scores
-from ggd.models.internvl import evolve_only_sampling_internvl
+from roam.eval_common import load_eic_scores
+from roam.models.internvl import evolve_only_sampling_internvl
 
-from ggd.monitor import CausalMonitorInternVL, CausalLogitsProcessor, parse_image_id
+from roam.monitor import ROAMMonitorInternVL, ROAMLogitsProcessor, parse_image_id
 
 warnings.filterwarnings("ignore")
 logging.basicConfig(level=logging.INFO, format="[%(asctime)s] %(message)s",
                     datefmt="%Y-%m-%d %H:%M:%S")
 log = logging.getLogger(__name__)
 
-class GroundingLogger(CausalLogitsProcessor):
+class GroundingLogger(ROAMLogitsProcessor):
 
-    def __init__(self, monitor, alpha=0.3):
+    def __init__(self, monitor, alpha=0.7):
         super().__init__(monitor, alpha)
         self.token_scores = []
         self._current_sample = []
@@ -195,7 +195,7 @@ def main():
     eic_scores = load_eic_scores(args.eic_scores_path, args.layer_index)
     log.info(f"EIC scores at L{args.layer_index}: nonzero={int((eic_scores>0).sum())}/{eic_scores.shape[0]}")
 
-    monitor = CausalMonitorInternVL(model, args.layer_index, eic_scores, image_token_id)
+    monitor = ROAMMonitorInternVL(model, args.layer_index, eic_scores, image_token_id)
     monitor.install_hook()
 
     gs_logger = GroundingLogger(monitor, alpha=args.alpha)

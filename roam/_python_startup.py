@@ -6,6 +6,6 @@ _repo_str = str(_repo)
 if _repo_str not in sys.path:
     sys.path.insert(0, _repo_str)
 
-from ggd.transformers_fork import ensure_all_forks
+from roam.transformers_fork import ensure_all_forks
 
 ensure_all_forks()

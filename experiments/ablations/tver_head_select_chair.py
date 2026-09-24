@@ -20,7 +20,7 @@ from llava.conversation import conv_templates
 from llava.mm_utils import tokenizer_image_token
 from llava.constants import IMAGE_TOKEN_INDEX, DEFAULT_IMAGE_TOKEN
 from transformers import AutoTokenizer
-from ggd.models.llava_sampling import evolve_only_sampling
+from roam.models.llava_sampling import evolve_only_sampling
 
 warnings.filterwarnings("ignore")
 logging.basicConfig(level=logging.INFO, format="[%(asctime)s] %(message)s",

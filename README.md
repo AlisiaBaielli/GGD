@@ -1,12 +1,14 @@
-# Grounding-Guided Decoding
+# ROAM: Mitigating Hallucinations in Vision-Language Models with Calibrated Grounding Monitors
 
-Grounding-Guided Decoding (GGD) is a training-free method that calibrates an environment-invariant grounding sensor offline and adaptively sharpens decoding when visual grounding weakens.
+Read-Only Attention Monitoring (ROAM) is a training-free decoding method that
+calibrates reusable grounding monitors offline and adaptively sharpens
+decoding when visual grounding weakens.
 
-![Grounding-Guided Decoding overview](assets/method.png)
+![Read-Only Attention Monitoring overview](assets/method.png)
 
 ## Results
 
-GGD reduces object hallucination across LLaVA-v1.5-7B, Qwen3-VL-8B-Instruct, and InternVL3.5-8B while preserving object recall and general multimodal capability.
+ROAM reduces object hallucination across LLaVA-v1.5-7B, Qwen3-VL-8B-Instruct, and InternVL3.5-8B while preserving object recall and general multimodal capability.
 
 ![Main benchmark results](assets/main_results.png)
 
@@ -21,7 +23,7 @@ GGD reduces object hallucination across LLaVA-v1.5-7B, Qwen3-VL-8B-Instruct, and
 
 ```bash
 bash scripts/setup_env.sh
-conda activate ggd
+conda activate roam
 source scripts/_env.sh
 ```
 
@@ -40,7 +42,7 @@ data/
 ├── coco/
 │   ├── annotations/
 │   ├── val2014/
-│   └── calibration_disjoint.jsonl
+│   └── calibration.jsonl
 ├── POPE/
 │   └── coco/
 ├── AMBER/
@@ -66,7 +68,7 @@ bash scripts/calibrate/internvl.sh
 ```
 
 Each script deterministically regenerates
-`data/coco/calibration_disjoint.jsonl`. By default it contains 8,000 unique
+`data/coco/calibration.jsonl`. By default it contains 8,000 unique
 COCO images and excludes the union of the 500-image CHAIR evaluation sets and
 all three POPE splits. The scripts stop if those POPE files are unavailable,
 rather than silently creating a partially disjoint set. AMBER and MME use
@@ -98,7 +100,7 @@ Models are `llava`, `qwen3`, and `internvl`. Benchmarks are `chair`, `pope`, `am
 After calibration, reproduce the main hallucination results with:
 
 ```bash
-export METHODS="vanilla vcd m3id only ggd"
+export METHODS="vanilla vcd m3id only roam"
 
 for model in llava qwen3 internvl; do
   for benchmark in chair pope amber mme; do

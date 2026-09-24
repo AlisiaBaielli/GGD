@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import transformers
 
-from ggd.models.qwen3 import _sample_only
+from roam.models.qwen3 import _sample_only
 
 _ALLOWED_EXTRA_KWARGS = {
     "use_only",

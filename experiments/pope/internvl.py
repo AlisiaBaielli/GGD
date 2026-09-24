@@ -9,7 +9,7 @@ REPO = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(REPO))
 sys.path.insert(0, str(REPO / "eval"))
 
-from ggd.transformers_fork import ensure_internvl_fork
+from roam.transformers_fork import ensure_internvl_fork
 ensure_internvl_fork()
 
 import torch
@@ -20,8 +20,8 @@ from transformers import AutoProcessor
 from transformers.models.internvl.modeling_internvl_real import InternVLForConditionalGeneration
 from transformers.generation.logits_process import LogitsProcessorList
 
-from ggd.models.internvl import evolve_only_sampling_internvl
-from ggd.monitor import CausalMonitorInternVL, CausalLogitsProcessor
+from roam.models.internvl import evolve_only_sampling_internvl
+from roam.monitor import ROAMMonitorInternVL, ROAMLogitsProcessor
 
 warnings.filterwarnings("ignore")
 logging.basicConfig(level=logging.INFO, format="[%(asctime)s] %(message)s",
@@ -68,11 +68,11 @@ def main():
     p.add_argument("--do_sample", type=bool, default=True)
     p.add_argument("--eic_scores_path", type=str, required=True)
     p.add_argument("--layer_index", type=int, default=0)
-    p.add_argument("--alpha", type=float, default=0.3)
+    p.add_argument("--alpha", type=float, default=0.7)
     p.add_argument("--type", type=str, default="random")
     p.add_argument("--dataset_name", type=str, default="coco")
     p.add_argument("--no_hook", action="store_true",
-                   help="Disable causal hook (vanilla run through same script)")
+                   help="Disable the ROAM monitor (vanilla run through the same script)")
     p.add_argument("--use_only", action="store_true",
                    help="ONLY baseline via the patched _sample loop")
     p.add_argument("--use_vcd", action="store_true", help="VCD baseline")
@@ -94,7 +94,7 @@ def main():
     image_token_id = model.config.image_token_id
 
     # The InternVL grounding monitor reads attention from the KV cache via a
-    # manual Q*K (see CausalMonitorInternVL.install_hook), so it does NOT need
+    # manual Q*K (see ROAMMonitorInternVL.install_hook), so it does NOT need
     # eager attention. Forcing eager here previously caused O(S^2) memory
     # blow-ups (CUDA OOM) on InternVL's high-resolution dynamic tiling, so we
     # keep the default memory-efficient sdpa kernel for all methods.
@@ -118,10 +118,10 @@ def main():
     elif args.use_vcd or args.use_m3id:
         processors = LogitsProcessorList([])
     else:
-        monitor = CausalMonitorInternVL(model, args.layer_index, eic_scores, image_token_id)
+        monitor = ROAMMonitorInternVL(model, args.layer_index, eic_scores, image_token_id)
         monitor.install_hook()
-        causal_processor = CausalLogitsProcessor(monitor, alpha=args.alpha)
-        processors = LogitsProcessorList([causal_processor])
+        roam_processor = ROAMLogitsProcessor(monitor, alpha=args.alpha)
+        processors = LogitsProcessorList([roam_processor])
 
     pope_entries = [json.loads(l) for l in open(args.pope_path)]
     log.info(f"POPE: {len(pope_entries)} questions, {args.dataset_name}/{args.type}, alpha={args.alpha}")
@@ -155,7 +155,7 @@ def main():
 
         with torch.inference_mode():
             if getattr(args, "use_vcd", False) or getattr(args, "use_m3id", False):
-                from ggd.eval_common import import_vcd_baseline
+                from roam.eval_common import import_vcd_baseline
                 contrastive_generate, add_diffusion_noise = import_vcd_baseline("internvl")
                 neg_inputs = {k: v.clone() if isinstance(v, torch.Tensor) else v for k, v in inputs.items()}
                 if args.use_vcd:

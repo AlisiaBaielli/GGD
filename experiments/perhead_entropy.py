@@ -1,6 +1,4 @@
-"""
-Per-Head Entropy Analysis for Causal
-"""
+"""Per-head entropy analysis for ROAM."""
 import os, sys, json, argparse, logging, warnings
 from pathlib import Path
 
@@ -16,7 +14,7 @@ from llava.conversation import conv_templates
 from llava.mm_utils import tokenizer_image_token
 from llava.constants import IMAGE_TOKEN_INDEX, DEFAULT_IMAGE_TOKEN
 from transformers import AutoTokenizer
-from ggd.models.llava_sampling import evolve_only_sampling
+from roam.models.llava_sampling import evolve_only_sampling
 from tqdm import tqdm
 from PIL import Image
 

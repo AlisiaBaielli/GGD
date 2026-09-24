@@ -8,7 +8,7 @@ fi
 setup_cluster
 
 SCORES="${SCORES:-${SCORES_ROOT}/llava_eic.pt}"
-OUT="${OUT_ROOT}/mechanistic/pertoken_ggd"
+OUT="${OUT_ROOT}/mechanistic/pertoken_roam"
 mkdir -p "${OUT}"
 
 python experiments/pertoken_analysis.py \

@@ -9,7 +9,7 @@ REPO = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(REPO / "transformers" / "src"))
 sys.path.insert(0, str(REPO))
 
-from ggd.transformers_fork import ensure_internvl_fork
+from roam.transformers_fork import ensure_internvl_fork
 ensure_internvl_fork()
 
 import torch
@@ -22,15 +22,15 @@ from transformers.models.internvl.modeling_internvl_real import (
     InternVLForConditionalGeneration,
 )
 
-from ggd.eval_common import (
+from roam.eval_common import (
     chair_protocol_image_files,
     excluded_image_ids,
     select_image_files,
 )
-from ggd.models.internvl import evolve_only_sampling_internvl
-from ggd.monitor import (
-    CausalLogitsProcessor,
-    CausalMonitorInternVL,
+from roam.models.internvl import evolve_only_sampling_internvl
+from roam.monitor import (
+    ROAMLogitsProcessor,
+    ROAMMonitorInternVL,
     parse_image_id,
 )
 
@@ -66,15 +66,15 @@ def parse_args():
     p.add_argument("--max_new_tokens", type=int, default=128)
     p.add_argument("--eic_scores_path", type=str, required=True)
     p.add_argument("--layer_index", type=int, default=0)
-    p.add_argument("--alpha", type=float, default=0.3,
+    p.add_argument("--alpha", type=float, default=0.7,
                    help="Max temperature reduction when ungrounded")
     p.add_argument("--do_sample", type=str2bool, default=True)
     p.add_argument("--temperature", type=float, default=1.0)
     p.add_argument("--top_p", type=float, default=1.0)
-    p.add_argument("--method_name", type=str, default="ggd")
+    p.add_argument("--method_name", type=str, default="roam")
     p.add_argument("--record_efficiency", action="store_true")
     p.add_argument("--no_hook", action="store_true",
-                   help="Disable causal hook (vanilla run through same script)")
+                   help="Disable the ROAM monitor (vanilla run through the same script)")
     p.add_argument("--use_only", action="store_true",
                    help="ONLY baseline via the patched _sample loop")
     p.add_argument("--use_vcd", action="store_true")
@@ -109,7 +109,7 @@ def main():
     image_token_id = model.config.image_token_id
 
     # The InternVL grounding monitor reads attention from the KV cache via a
-    # manual Q*K (see CausalMonitorInternVL.install_hook), so it does NOT need
+    # manual Q*K (see ROAMMonitorInternVL.install_hook), so it does NOT need
     # eager attention. Forcing eager here previously caused O(S^2) memory
     # blow-ups (CUDA OOM) on InternVL's high-resolution dynamic tiling, so we
     # keep the default memory-efficient sdpa kernel for all methods.
@@ -135,10 +135,10 @@ def main():
     elif getattr(args, 'use_vcd', False) or getattr(args, 'use_m3id', False):
         processors = LogitsProcessorList([])
     else:
-        monitor = CausalMonitorInternVL(model, args.layer_index, eic_scores, image_token_id)
+        monitor = ROAMMonitorInternVL(model, args.layer_index, eic_scores, image_token_id)
         monitor.install_hook()
-        causal_processor = CausalLogitsProcessor(monitor, alpha=args.alpha)
-        processors = LogitsProcessorList([causal_processor])
+        roam_processor = ROAMLogitsProcessor(monitor, alpha=args.alpha)
+        processors = LogitsProcessorList([roam_processor])
 
     with open(args.anno_path) as handle:
         coco = json.load(handle)
@@ -159,11 +159,11 @@ def main():
 
     output_jsonl = os.path.join(
         args.out_path,
-        f"ggd_alpha{args.alpha}_{args.method_name}.jsonl",
+        f"roam_alpha{args.alpha}_{args.method_name}.jsonl",
     )
     output_time = os.path.join(
         args.out_path,
-        f"ggd_alpha{args.alpha}_{args.method_name}_time.txt",
+        f"roam_alpha{args.alpha}_{args.method_name}_time.txt",
     )
     open(output_jsonl, "w").close()
     open(output_time, "w").close()
@@ -208,7 +208,7 @@ def main():
             torch.cuda.reset_peak_memory_stats()
         t1 = time.perf_counter()
         if getattr(args, 'use_vcd', False) or getattr(args, 'use_m3id', False):
-            from ggd.eval_common import import_vcd_baseline
+            from roam.eval_common import import_vcd_baseline
             contrastive_generate, add_diffusion_noise = import_vcd_baseline("internvl")
             neg_inputs = {k: v.clone() if isinstance(v, torch.Tensor) else v for k, v in inputs.items()}
             if args.use_vcd:
@@ -251,7 +251,7 @@ def main():
             clean_up_tokenization_spaces=False,
         )[0].strip()
 
-        logger.info(f"[Causal-CHAIR InternVL]")
+        logger.info("[ROAM-CHAIR InternVL]")
         logger.info(f"V: {image_path}")
         logger.info(f"Q: {prompt}")
         logger.info(f"A: {caption}")

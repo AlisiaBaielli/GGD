@@ -1,6 +1,6 @@
 """CHAIR evaluation for LLaVA-v1.5-7B.
 
-Supports: vanilla, ggd (ours), ONLY, ONLY+EIC, VCD, M3ID, ASCD.
+Supports: vanilla, roam (ours), ONLY, ONLY+EIC, VCD, M3ID, ASCD.
 """
 import argparse
 import json
@@ -30,7 +30,7 @@ from llava.conversation import conv_templates
 from llava.mm_utils import tokenizer_image_token
 from llava.model import LlavaLlamaForCausalLM
 
-from ggd.eval_common import (
+from roam.eval_common import (
     caption_output_path,
     chair_protocol_image_files,
     excluded_image_ids,
@@ -39,13 +39,13 @@ from ggd.eval_common import (
     select_image_files,
     validate_method_flags,
 )
-from ggd.models.llava_sampling import (
+from roam.models.llava_sampling import (
     evolve_only_sampling,
     install_ascd_llava15,
 )
-from ggd.monitor import CausalLogitsProcessor, CausalMonitor
-from ggd.only_eic import inject_eic_for_only
-from ggd.vcd import add_diffusion_noise
+from roam.monitor import ROAMLogitsProcessor, ROAMMonitor
+from roam.only_eic import inject_eic_for_only
+from roam.vcd import add_diffusion_noise
 
 warnings.filterwarnings("ignore")
 logging.basicConfig(
@@ -95,7 +95,7 @@ def parse_args():
                    help="Override output method tag (default: inferred from flags)")
 
     p.add_argument("--no_hook", action="store_true",
-                   help="Disable GGD monitor (vanilla or ONLY/VCD/M3ID)")
+                   help="Disable ROAM monitor (vanilla or ONLY/VCD/M3ID)")
     p.add_argument("--use_only", action="store_true", help="ONLY baseline")
     p.add_argument("--use_eic_heads", action="store_true",
                    help="With --use_only: use offline EIC head set in CD branch")
@@ -127,18 +127,18 @@ def main():
     validate_method_flags(args)
     method, needs_scores = resolve_method(args)
     # `method` is the canonical decoding behavior (vanilla/only/only_eic/vcd/m3id/
-    # ascd/ggd) derived from flags. `--method_name` is only an OUTPUT LABEL (e.g.
-    # "ggd_random" for head-selection ablations) and must NOT change behavior.
+    # ascd/roam) derived from flags. `--method_name` is only an OUTPUT LABEL (e.g.
+    # "roam_random" for head-selection ablations) and must NOT change behavior.
     label = args.method_name if args.method_name else method
     if needs_scores and not args.eic_scores_path:
         raise ValueError(f"--eic_scores_path is required for method={method}")
 
     tokenizer = AutoTokenizer.from_pretrained(args.model_path, use_fast=False)
-    # GGD needs returned attention weights; ASCD modifies pre-softmax attention
+    # ROAM needs returned attention weights; ASCD modifies pre-softmax attention
     # logits. Both therefore require the eager implementation.
     attn_impl = (
         "eager"
-        if method in ("ggd", "ascd")
+        if method in ("roam", "ascd")
         else "sdpa"
     ) if args.attn_implementation == "auto" else args.attn_implementation
     if method == "ascd" and attn_impl != "eager":
@@ -183,15 +183,15 @@ def main():
             f"nonzero={int((eic_scores > 0).sum())}/{len(eic_scores)}"
         )
 
-        if method == "ggd":
-            monitor = CausalMonitor(
+        if method == "roam":
+            monitor = ROAMMonitor(
                 model, args.layer_index, eic_scores,
                 img_start=args.img_start,
                 img_len=args.img_len,
             )
             orig_fwd = monitor.install_qk_hook()
             processors = LogitsProcessorList(
-                [CausalLogitsProcessor(monitor, alpha=args.alpha)]
+                [ROAMLogitsProcessor(monitor, alpha=args.alpha)]
             )
         elif method == "only_eic":
             layer_for_only = inject_eic_for_only(

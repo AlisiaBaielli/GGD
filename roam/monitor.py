@@ -1,5 +1,5 @@
 """
-ggd/monitor.py
+roam/monitor.py
 """
 import math
 import os
@@ -7,12 +7,12 @@ import re
 import logging
 
 import torch
-from ggd.grounding import compute_grounding_score_batched
-from ggd.sharpening import sharpen_logits
+from roam.grounding import compute_grounding_score_batched
+from roam.sharpening import sharpen_logits
 
 log = logging.getLogger(__name__)
 
-class CausalMonitor:
+class ROAMMonitor:
     """
     Hooks into a target LLaMA layer's attention to monitor high-C heads'
     attention entropy over image tokens during decode.
@@ -22,7 +22,7 @@ class CausalMonitor:
       - C-weighted mean entropy across high-C heads
       - a "grounding score" = 1 - normalized_entropy (0=diffuse, 1=focused)
 
-    The grounding score is consumed by :class:`CausalLogitsProcessor` to
+    The grounding score is consumed by :class:`ROAMLogitsProcessor` to
     modulate output logits.
     """
 
@@ -47,7 +47,7 @@ class CausalMonitor:
         self.mean_entropy = 0.0
         self._handle = None
 
-        log.info(f"[Causal] layer={layer_idx} monitoring {len(self.high_c_indices)}/{self.num_heads} heads, "
+        log.info(f"[ROAM] layer={layer_idx} monitoring {len(self.high_c_indices)}/{self.num_heads} heads, "
                  f"img_tokens=[{img_start}:{img_start+img_len}]")
 
     def reset(self):
@@ -110,7 +110,7 @@ class CausalMonitor:
         self.layer.self_attn.forward = original_forward
 
 
-class CausalMonitorQwen3:
+class ROAMMonitorQwen3:
     """
     Hooks into Qwen3VLTextAttention.forward at ``layer_idx`` and, during
     decode (Q == 1), manually computes Q * K attention weights for the
@@ -154,7 +154,7 @@ class CausalMonitorQwen3:
         self._orig_forward = None
 
         log.info(
-            f"[Causal-Qwen3] layer={layer_idx}  monitoring "
+            f"[ROAM-Qwen3] layer={layer_idx}  monitoring "
             f"{len(self.high_c_indices)}/{self.num_heads} heads  "
             f"(GQA groups={self.num_kv_groups})"
         )
@@ -294,15 +294,15 @@ class CausalMonitorQwen3:
             self.img_positions = mask.nonzero(as_tuple=True)[0]
             self.img_end = int(self.img_positions[-1])
             log.info(
-                f"[Causal-Qwen3] Detected {len(self.img_positions)} image tokens "
+                f"[ROAM-Qwen3] Detected {len(self.img_positions)} image tokens "
                 f"at positions [{self.img_positions[0].item()}..{self.img_positions[-1].item()}]"
             )
         else:
             self.img_positions = None
             self.img_end = None
-            log.warning("[Causal-Qwen3] No image tokens found in input_ids!")
+            log.warning("[ROAM-Qwen3] No image tokens found in input_ids!")
 
-class CausalMonitorInternVL:
+class ROAMMonitorInternVL:
     """
     Hooks ``Qwen3Attention.forward`` at ``layer_idx`` of the InternVL language
     model and, during decode (Q == 1), manually computes Q*K attention
@@ -347,7 +347,7 @@ class CausalMonitorInternVL:
         self._orig_forward = None
 
         log.info(
-            f"[Causal-InternVL] layer={layer_idx}  monitoring "
+            f"[ROAM-InternVL] layer={layer_idx}  monitoring "
             f"{len(self.high_c_indices)}/{self.num_heads} heads  "
             f"(GQA groups={self.num_kv_groups})"
         )
@@ -480,17 +480,17 @@ class CausalMonitorInternVL:
             self.img_positions = mask.nonzero(as_tuple=True)[0]
             self.img_end = int(self.img_positions[-1])
             log.info(
-                f"[Causal-InternVL] Detected {len(self.img_positions)} image tokens "
+                f"[ROAM-InternVL] Detected {len(self.img_positions)} image tokens "
                 f"at positions [{self.img_positions[0].item()}..{self.img_positions[-1].item()}]"
             )
         else:
             self.img_positions = None
             self.img_end = None
-            log.warning("[Causal-InternVL] No image tokens found in input_ids!")
+            log.warning("[ROAM-InternVL] No image tokens found in input_ids!")
 
-class CausalLogitsProcessor:
+class ROAMLogitsProcessor:
     """
-    Logits processor that uses a Causal monitor's grounding score to
+    Logits processor that uses a ROAM monitor's grounding score to
     modulate logits at each decode step.
 
     When grounding is low (high entropy in visual heads):
@@ -507,7 +507,7 @@ class CausalLogitsProcessor:
     A 0.3 floor is enforced to avoid over-sharpening.
     """
 
-    def __init__(self, monitor, alpha=0.5):
+    def __init__(self, monitor, alpha=0.7):
         self.monitor = monitor
         self.alpha = alpha
 

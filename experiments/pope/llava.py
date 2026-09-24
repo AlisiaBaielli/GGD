@@ -23,18 +23,18 @@ from llava.mm_utils import tokenizer_image_token, get_model_name_from_path
 from transformers import AutoTokenizer
 from transformers.generation.logits_process import LogitsProcessorList
 
-from ggd.eval_common import (
+from roam.eval_common import (
     load_eic_scores,
     resolve_method,
     validate_method_flags,
 )
-from ggd.models.llava_sampling import (
+from roam.models.llava_sampling import (
     evolve_only_sampling,
     install_ascd_llava15,
 )
-from ggd.monitor import CausalMonitor, CausalLogitsProcessor
-from ggd.only_eic import inject_eic_for_only
-from ggd.vcd import add_diffusion_noise
+from roam.monitor import ROAMMonitor, ROAMLogitsProcessor
+from roam.only_eic import inject_eic_for_only
+from roam.vcd import add_diffusion_noise
 
 warnings.filterwarnings("ignore")
 logging.basicConfig(level=logging.INFO, format="[%(asctime)s] %(message)s",
@@ -79,7 +79,7 @@ def main():
     p.add_argument("--do_sample", action="store_true", default=True)
     p.add_argument("--conv_mode", type=str, default="llava_v1")
     p.add_argument("--eic_scores_path", type=str, default=None,
-                   help="Required for GGD (default); ignored if --no_hook")
+                   help="Required for ROAM (default); ignored if --no_hook")
     p.add_argument("--layer_index", type=int, default=1)
     p.add_argument("--alpha", type=float, default=0.7)
     p.add_argument("--img_start", type=int, default=35)
@@ -112,8 +112,8 @@ def main():
         raise ValueError(f"--eic_scores_path is required for method={method}")
 
     tokenizer = AutoTokenizer.from_pretrained(args.model_path, use_fast=False)
-    # GGD needs returned attention weights; ASCD edits attention logits.
-    attn_impl = "eager" if method in ("ggd", "ascd") else "sdpa"
+    # ROAM needs returned attention weights; ASCD edits attention logits.
+    attn_impl = "eager" if method in ("roam", "ascd") else "sdpa"
     model = LlavaLlamaForCausalLM.from_pretrained(
         args.model_path, torch_dtype=torch.float16, device_map="auto",
         attn_implementation=attn_impl,
@@ -142,12 +142,12 @@ def main():
         payload_scores = load_eic_scores(args.eic_scores_path, args.layer_index)
         log.info(f"EIC scores: nonzero={int((payload_scores > 0).sum())}/{len(payload_scores)}")
 
-        if method == "ggd":
-            monitor = CausalMonitor(model, args.layer_index, payload_scores,
+        if method == "roam":
+            monitor = ROAMMonitor(model, args.layer_index, payload_scores,
                                    img_start=args.img_start, img_len=args.img_len)
             orig_fwd = monitor.install_qk_hook()
-            causal_processor = CausalLogitsProcessor(monitor, alpha=args.alpha)
-            processors = LogitsProcessorList([causal_processor])
+            roam_processor = ROAMLogitsProcessor(monitor, alpha=args.alpha)
+            processors = LogitsProcessorList([roam_processor])
         elif method == "only_eic":
             layer_for_only = inject_eic_for_only(
                 model=model,

@@ -32,7 +32,7 @@ python experiments/chair/llava.py \
     --layer_index 1 \
     --alpha 0.7 \
     --num_eval_samples "${NSAMP:-500}" \
-    --method_name "ggd_${TAG}"
+    --method_name "roam_${TAG}"
 
-run_chair_metrics "${OUT}/ggd_${TAG}.jsonl" "${OUT}/chair_results.json"
+run_chair_metrics "${OUT}/roam_${TAG}.jsonl" "${OUT}/chair_results.json"
 echo "=== LLaVA head ablation ${TAG} ==="

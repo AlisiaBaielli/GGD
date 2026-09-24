@@ -8,7 +8,7 @@ fi
 setup_cluster
 
 if [[ -z "${CALIB_JSONL:-}" ]]; then
-  CALIB_JSONL="${COCO_DIR}/calibration_disjoint.jsonl"
+  CALIB_JSONL="${COCO_DIR}/calibration.jsonl"
   BUILD_CALIB_JSONL=1
 else
   BUILD_CALIB_JSONL=0
@@ -29,7 +29,7 @@ if [[ "${BUILD_CALIB_JSONL}" == "1" || ! -f "${CALIB_JSONL}" ]]; then
     fi
     EXCLUDE_ARGS+=(--exclude-file "${pope_file}")
   done
-  python -m ggd.make_calibration_jsonl \
+  python -m roam.make_calibration_jsonl \
     --instances "${COCO_DIR}/annotations/instances_val2014.json" \
     --out "${CALIB_JSONL}" --n "${N_SAMPLES}" --seed "${CALIB_SEED}" \
     "${EXCLUDE_ARGS[@]}"
@@ -38,7 +38,7 @@ fi
 RAW="${RAW:-${SCORES_ROOT}/llava_raw.pt}"
 ZSCORE="${ZSCORE:-${SCORES_ROOT}/llava_eic.pt}"
 
-python -m ggd.calibrate \
+python -m roam.calibrate \
   --model_name "${MODEL_LLAVA}" \
   --model_type llava \
   --question_file "${CALIB_JSONL}" \
@@ -49,7 +49,7 @@ python -m ggd.calibrate \
   --variance_mode env_per_example \
   --out "${RAW}"
 
-python -m ggd.apply_zscore_filter \
+python -m roam.apply_zscore_filter \
   --input "${RAW}" \
   --output "${ZSCORE}"
 

@@ -13,12 +13,12 @@ _repo = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, _repo)
 sys.path.insert(0, os.path.join(_repo, 'experiments'))
 
-from ggd.transformers_fork import ensure_qwen3_vl_fork
+from roam.transformers_fork import ensure_qwen3_vl_fork
 ensure_qwen3_vl_fork()
 
 from transformers import AutoProcessor
 from transformers.models.qwen3_vl.modeling_qwen3_vl import Qwen3VLForConditionalGeneration
-from ggd.models.qwen3 import evolve_only_sampling_qwen3
+from roam.models.qwen3 import evolve_only_sampling_qwen3
 
 from PIL import Image
 from tqdm import tqdm

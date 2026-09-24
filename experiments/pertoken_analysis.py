@@ -18,18 +18,18 @@ from llava.conversation import conv_templates
 from llava.mm_utils import tokenizer_image_token, get_model_name_from_path
 from llava.constants import IMAGE_TOKEN_INDEX, DEFAULT_IMAGE_TOKEN
 from transformers import AutoTokenizer
-from ggd.models.llava_sampling import evolve_only_sampling
+from roam.models.llava_sampling import evolve_only_sampling
 
 warnings.filterwarnings("ignore")
 logging.basicConfig(level=logging.INFO, format="[%(asctime)s] %(message)s",
                     datefmt="%Y-%m-%d %H:%M:%S")
 log = logging.getLogger(__name__)
 
-from ggd.monitor import CausalMonitor, CausalLogitsProcessor
+from roam.monitor import ROAMMonitor, ROAMLogitsProcessor
 
-class GroundingLogger(CausalLogitsProcessor):
+class GroundingLogger(ROAMLogitsProcessor):
 
-    def __init__(self, monitor, alpha=0.3):
+    def __init__(self, monitor, alpha=0.7):
         super().__init__(monitor, alpha)
         self.token_scores = []
         self._current_sample = []
@@ -173,7 +173,7 @@ def main():
     p.add_argument("--max_new_tokens", type=int, default=128)
     p.add_argument("--eic_scores_path", type=str, required=True)
     p.add_argument("--layer_index", type=int, default=1)
-    p.add_argument("--alpha", type=float, default=0.3)
+    p.add_argument("--alpha", type=float, default=0.7)
     p.add_argument("--img_start", type=int, default=35)
     p.add_argument("--img_len", type=int, default=576)
     p.add_argument("--temperature", type=float, default=1.0)
@@ -211,7 +211,7 @@ def main():
         eic_scores = eic_scores[args.layer_index]
     eic_scores = eic_scores.float()
 
-    monitor = CausalMonitor(model, args.layer_index, eic_scores,
+    monitor = ROAMMonitor(model, args.layer_index, eic_scores,
                           img_start=args.img_start, img_len=args.img_len)
     orig_fwd = monitor.install_qk_hook()
 

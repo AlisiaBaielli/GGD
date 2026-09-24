@@ -1,6 +1,4 @@
-"""
-MMVP evaluation for LLaVA-v1.5-7B (vanilla and causal steering).
-"""
+"""MMVP evaluation for LLaVA-v1.5-7B."""
 import os, sys, json, argparse, logging, warnings, re, csv
 from pathlib import Path
 from tqdm import tqdm
@@ -23,12 +21,12 @@ from llava.constants import IMAGE_TOKEN_INDEX, DEFAULT_IMAGE_TOKEN
 from transformers import AutoTokenizer
 from transformers.generation.logits_process import LogitsProcessorList
 
-from ggd.monitor import CausalMonitor, CausalLogitsProcessor
-from ggd.models.llava_sampling import (
+from roam.monitor import ROAMMonitor, ROAMLogitsProcessor
+from roam.models.llava_sampling import (
     evolve_only_sampling,
     install_ascd_llava15,
 )
-from ggd.vcd import add_diffusion_noise
+from roam.vcd import add_diffusion_noise
 
 warnings.filterwarnings("ignore")
 logging.basicConfig(level=logging.INFO, format="[%(asctime)s] %(message)s",
@@ -46,9 +44,9 @@ def parse_args():
     p.add_argument("--img_start", type=int, default=35)
     p.add_argument("--img_len", type=int, default=576)
     p.add_argument("--max_new_tokens", type=int, default=20)
-    p.add_argument("--method_name", type=str, default="ggd")
+    p.add_argument("--method_name", type=str, default="roam")
     p.add_argument("--use_only", action="store_true",
-                   help="Run ONLY baseline instead of GGD.")
+                   help="Run ONLY baseline instead of ROAM.")
     p.add_argument("--only_alpha_pos", type=float, default=3.0)
     p.add_argument("--only_alpha_neg", type=float, default=1.0)
     p.add_argument("--only_beta", type=float, default=0.1)
@@ -132,7 +130,7 @@ def main():
         eic_scores = eic_scores[args.layer_index]
     eic_scores = eic_scores.float()
 
-    causal_processor = None
+    roam_processor = None
     if args.use_only:
         log.info(f"[ONLY active] layer={args.layer_index} "
                  f"alpha_pos={args.only_alpha_pos} alpha_neg={args.only_alpha_neg} "
@@ -144,11 +142,11 @@ def main():
             f"[ASCD active] alpha={args.ascd_alpha} beta={args.ascd_beta}"
         )
     elif args.alpha > 0:
-        monitor = CausalMonitor(model, args.layer_index, eic_scores,
+        monitor = ROAMMonitor(model, args.layer_index, eic_scores,
                                img_start=args.img_start, img_len=args.img_len)
         monitor.install_qk_hook()
-        causal_processor = CausalLogitsProcessor(monitor, alpha=args.alpha)
-        log.info(f"[GGD active] layer={args.layer_index} alpha={args.alpha}")
+        roam_processor = ROAMLogitsProcessor(monitor, alpha=args.alpha)
+        log.info(f"[ROAM active] layer={args.layer_index} alpha={args.alpha}")
     else:
         log.info("[Vanilla mode]")
 
@@ -205,8 +203,8 @@ def main():
                 images_pos=None,
                 images_neg=add_diffusion_noise(image_tensor, args.noise_step),
             ))
-        if causal_processor is not None:
-            gen_kwargs["logits_processor"] = LogitsProcessorList([causal_processor])
+        if roam_processor is not None:
+            gen_kwargs["logits_processor"] = LogitsProcessorList([roam_processor])
 
         with torch.inference_mode():
             out = model.generate(input_ids, **gen_kwargs)

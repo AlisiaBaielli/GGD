@@ -1,5 +1,5 @@
 """
-MMVP evaluation for Qwen3-VL-8B-Instruct (vanilla / GGD / ONLY / VCD / M3ID).
+MMVP evaluation for Qwen3-VL-8B-Instruct (vanilla / ROAM / ONLY / VCD / M3ID).
 """
 import os, sys, json, argparse, logging, warnings, re, csv
 from pathlib import Path
@@ -11,7 +11,7 @@ sys.path = [p for p in sys.path if p != _self_dir]
 sys.path.insert(0, str(REPO / "transformers" / "src"))
 sys.path.insert(0, str(REPO))
 
-from ggd.transformers_fork import ensure_qwen3_vl_fork
+from roam.transformers_fork import ensure_qwen3_vl_fork
 ensure_qwen3_vl_fork()
 
 import torch
@@ -22,8 +22,8 @@ from transformers import AutoProcessor
 from transformers.generation.logits_process import LogitsProcessorList
 from transformers.models.qwen3_vl.modeling_qwen3_vl import Qwen3VLForConditionalGeneration
 
-from ggd.models.qwen3 import evolve_only_sampling_qwen3
-from ggd.monitor import CausalMonitorQwen3, CausalLogitsProcessor
+from roam.models.qwen3 import evolve_only_sampling_qwen3
+from roam.monitor import ROAMMonitorQwen3, ROAMLogitsProcessor
 
 warnings.filterwarnings("ignore")
 logging.basicConfig(level=logging.INFO, format="[%(asctime)s] %(message)s",
@@ -38,9 +38,9 @@ def parse_args():
     p.add_argument("--out_path", type=str, required=True)
     p.add_argument("--eic_scores_path", type=str, required=True)
     p.add_argument("--layer_index", type=int, default=0)
-    p.add_argument("--alpha", type=float, default=0.3)
+    p.add_argument("--alpha", type=float, default=0.7)
     p.add_argument("--max_new_tokens", type=int, default=20)
-    p.add_argument("--method_name", type=str, default="ggd")
+    p.add_argument("--method_name", type=str, default="roam")
     p.add_argument("--use_only", action="store_true", help="ONLY baseline")
     p.add_argument("--use_eic_heads", action="store_true",
                    help="With --use_only: use offline EIC head set in the CD branch")
@@ -93,7 +93,7 @@ def main():
     eic_scores = eic_scores.float()
 
     if args.use_only and args.use_eic_heads:
-        from ggd.only_eic import inject_eic_for_only
+        from roam.only_eic import inject_eic_for_only
         inject_eic_for_only(model=model, scores_path=args.eic_scores_path,
                             layer_index=args.layer_index, pure_eic=False, require_match=False)
         args.method_name = "only_eic"
@@ -105,10 +105,10 @@ def main():
     if args.use_only or args.use_vcd or args.use_m3id:
         log.info(f"[{args.method_name}] no monitor")
     elif args.alpha > 0:
-        monitor = CausalMonitorQwen3(model, args.layer_index, eic_scores, image_token_id)
+        monitor = ROAMMonitorQwen3(model, args.layer_index, eic_scores, image_token_id)
         monitor.install_hook()
-        processors = LogitsProcessorList([CausalLogitsProcessor(monitor, alpha=args.alpha)])
-        log.info(f"[GGD] layer={args.layer_index} alpha={args.alpha}")
+        processors = LogitsProcessorList([ROAMLogitsProcessor(monitor, alpha=args.alpha)])
+        log.info(f"[ROAM] layer={args.layer_index} alpha={args.alpha}")
     else:
         log.info("[Vanilla]")
 
@@ -148,7 +148,7 @@ def main():
 
         with torch.inference_mode():
             if args.use_vcd or args.use_m3id:
-                from ggd.eval_common import import_vcd_baseline
+                from roam.eval_common import import_vcd_baseline
                 contrastive_generate, add_diffusion_noise = import_vcd_baseline("qwen3")
                 neg_inputs = {k: (v.clone() if isinstance(v, torch.Tensor) else v)
                               for k, v in inputs.items()}

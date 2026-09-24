@@ -23,8 +23,8 @@ python experiments/chair/internvl.py \
   --layer_index "${LAYER}" \
   --alpha "${ALPHA}" \
   --num_eval_samples "${NSAMP:-500}" \
-  --method_name "ggd_L${LAYER}"
+  --method_name "roam_L${LAYER}"
 
-CAP="$(ggd_caption_path "${OUT}" "${ALPHA}" "ggd_L${LAYER}")"
+CAP="$(roam_caption_path "${OUT}" "${ALPHA}" "roam_L${LAYER}")"
 run_chair_metrics "${CAP}" "${OUT}/chair_results.json"
 echo "[done] InternVL layer ${LAYER}"

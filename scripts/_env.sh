@@ -3,7 +3,7 @@ _SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-${(%):-%x}}")" && pwd)"
 REPO_ROOT="${REPO_ROOT:-$(cd "${_SCRIPT_DIR}/.." && pwd)}"
 OUT_ROOT="${OUT_ROOT:-${REPO_ROOT}/results}"
 SCORES_ROOT="${SCORES_ROOT:-${REPO_ROOT}/scores}"
-CONDA_ENV="${CONDA_ENV:-ggd}"
+CONDA_ENV="${CONDA_ENV:-roam}"
 
 MODEL_LLAVA="${MODEL_LLAVA:-${REPO_ROOT}/data/models/llava-v1.5-7b}"
 MODEL_QWEN3="${MODEL_QWEN3:-${REPO_ROOT}/data/models/Qwen3-VL-8B-Instruct}"
@@ -20,7 +20,7 @@ MME_IMAGE_DIR="${MME_IMAGE_DIR:-${MME_DIR}/MME_Benchmark_release_version/MME_Ben
 MME_QUESTIONS="${MME_QUESTIONS:-${MME_DIR}/test_merged_final.jsonl}"
 
 export PYTHONPATH="${REPO_ROOT}:${REPO_ROOT}/transformers/src:${PYTHONPATH:-}"
-export PYTHONSTARTUP="${REPO_ROOT}/ggd/_python_startup.py"
+export PYTHONSTARTUP="${REPO_ROOT}/roam/_python_startup.py"
 export PYTORCH_CUDA_ALLOC_CONF="${PYTORCH_CUDA_ALLOC_CONF:-expandable_segments:True}"
 
 setup_env() {
@@ -52,7 +52,7 @@ setup_cluster() {
     fi
   fi
   export PYTHONPATH="${REPO_ROOT}:${REPO_ROOT}/transformers/src:${PYTHONPATH:-}"
-  export PYTHONSTARTUP="${REPO_ROOT}/ggd/_python_startup.py"
+  export PYTHONSTARTUP="${REPO_ROOT}/roam/_python_startup.py"
 }
 
 require_transformers_v5() {
@@ -88,12 +88,12 @@ for pkg in ("nltk", "pycocotools", "pycocoevalcap", "google.protobuf", "tiktoken
 PY
 }
 
-# Qwen3 / InternVL CHAIR writers use: ggd_alpha{alpha}_{method_name}.jsonl
-ggd_caption_path() {
+# Qwen3 / InternVL CHAIR writers use: roam_alpha{alpha}_{method_name}.jsonl
+roam_caption_path() {
   local out_dir="$1"
   local alpha="$2"
   local method="$3"
-  echo "${out_dir}/ggd_alpha${alpha}_${method}.jsonl"
+  echo "${out_dir}/roam_alpha${alpha}_${method}.jsonl"
 }
 
 run_chair_metrics() {

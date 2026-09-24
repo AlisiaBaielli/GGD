@@ -1,4 +1,4 @@
-name: ggd
+name: roam
 channels:
   - conda-forge
 dependencies:

@@ -21,11 +21,11 @@ from llava.model import LlavaLlamaForCausalLM
 from llava.mm_utils import tokenizer_image_token, process_images
 from transformers import AutoTokenizer
 from transformers.generation.logits_process import LogitsProcessorList
-from ggd.models.llava_sampling import (
+from roam.models.llava_sampling import (
     evolve_only_sampling,
     install_ascd_llava15,
 )
-from ggd.vcd import add_diffusion_noise
+from roam.vcd import add_diffusion_noise
 
 from PIL import Image
 import io, base64, logging
@@ -81,12 +81,12 @@ def parse_args():
                    help="CircularEval: test all option rotations")
     p.add_argument("--single_pred_prompt", action="store_true", default=True)
     p.add_argument("--method", type=str, required=True,
-                   choices=["vanilla", "only", "ggd", "vcd", "m3id", "ascd"])
+                   choices=["vanilla", "only", "roam", "vcd", "m3id", "ascd"])
     p.add_argument("--eic_scores_path", type=str,
                    default=str(REPO / "scores/llava_eic.pt"))
     p.add_argument("--noise_step", type=int, default=500)
     p.add_argument("--layer_index", type=int, default=1)
-    p.add_argument("--alpha", type=float, default=0.3)
+    p.add_argument("--alpha", type=float, default=0.7)
     p.add_argument("--img_start", type=int, default=35)
     p.add_argument("--img_len", type=int, default=576)
     p.add_argument("--gamma", type=float, default=0.2)
@@ -112,7 +112,7 @@ def main():
     model = LlavaLlamaForCausalLM.from_pretrained(
         args.model_path, torch_dtype=torch.float16, device_map="auto",
         attn_implementation=(
-            "eager" if args.method in ("ggd", "ascd") else "sdpa"
+            "eager" if args.method in ("roam", "ascd") else "sdpa"
         ),
     )
     model.eval()
@@ -135,17 +135,17 @@ def main():
     processors = LogitsProcessorList()
     use_only = (args.method == "only")
 
-    if args.method == "ggd":
-        from ggd.monitor import CausalMonitor, CausalLogitsProcessor
+    if args.method == "roam":
+        from roam.monitor import ROAMMonitor, ROAMLogitsProcessor
         payload = torch.load(args.eic_scores_path, map_location="cpu")
         eic_scores = payload.get("C", payload.get("scores", next(iter(payload.values()))))
         if eic_scores.dim() == 2:
             eic_scores = eic_scores[args.layer_index]
         eic_scores = eic_scores.float()
-        monitor = CausalMonitor(model, args.layer_index, eic_scores,
+        monitor = ROAMMonitor(model, args.layer_index, eic_scores,
                                img_start=args.img_start, img_len=args.img_len)
         orig_fwd = monitor.install_qk_hook()
-        processors = LogitsProcessorList([CausalLogitsProcessor(monitor, alpha=args.alpha)])
+        processors = LogitsProcessorList([ROAMLogitsProcessor(monitor, alpha=args.alpha)])
 
     questions = pd.read_table(os.path.expanduser(args.question_file))
     if args.limit:

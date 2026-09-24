@@ -28,18 +28,18 @@ from llava.conversation import Conversation, SeparatorStyle
 from llava.mm_utils import tokenizer_image_token
 from llava.model import LlavaLlamaForCausalLM
 
-from ggd.eval_common import (
+from roam.eval_common import (
     load_eic_scores,
     resolve_method,
     validate_method_flags,
 )
-from ggd.models.llava_sampling import (
+from roam.models.llava_sampling import (
     evolve_only_sampling,
     install_ascd_llava15,
 )
-from ggd.monitor import CausalLogitsProcessor, CausalMonitor
-from ggd.only_eic import inject_eic_for_only
-from ggd.vcd import add_diffusion_noise
+from roam.monitor import ROAMLogitsProcessor, ROAMMonitor
+from roam.only_eic import inject_eic_for_only
+from roam.vcd import add_diffusion_noise
 
 warnings.filterwarnings("ignore")
 logging.basicConfig(
@@ -99,9 +99,9 @@ def main():
         raise ValueError(f"--eic_scores_path is required for method={method}")
 
     tokenizer = AutoTokenizer.from_pretrained(args.model_path, use_fast=False)
-    # GGD's grounding monitor needs real attention weights (output_attentions),
-    # which the sdpa kernel returns as None; force eager for ggd only.
-    attn_impl = "eager" if method in ("ggd", "ascd") else "sdpa"
+    # ROAM's grounding monitor needs real attention weights (output_attentions),
+    # which the sdpa kernel returns as None; force eager for roam only.
+    attn_impl = "eager" if method in ("roam", "ascd") else "sdpa"
     model = LlavaLlamaForCausalLM.from_pretrained(
         args.model_path, torch_dtype=torch.float16, device_map="auto",
         attn_implementation=attn_impl,
@@ -133,14 +133,14 @@ def main():
             f"EIC scores layer={args.layer_index}: "
             f"nonzero={int((eic_scores > 0).sum())}/{len(eic_scores)}"
         )
-        if method == "ggd":
-            monitor = CausalMonitor(
+        if method == "roam":
+            monitor = ROAMMonitor(
                 model, args.layer_index, eic_scores,
                 img_start=args.img_start, img_len=args.img_len,
             )
             orig_fwd = monitor.install_qk_hook()
             processors = LogitsProcessorList([
-                CausalLogitsProcessor(monitor, alpha=args.alpha)
+                ROAMLogitsProcessor(monitor, alpha=args.alpha)
             ])
         elif method == "only_eic":
             layer_for_only = inject_eic_for_only(

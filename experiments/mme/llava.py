@@ -1,7 +1,7 @@
 """
 MME evaluation for LLaVA-v1.5-7B.
 
-Supports: vanilla, ggd (ours), ONLY, VCD, M3ID.
+Supports: vanilla, roam (ours), ONLY, VCD, M3ID.
 """
 import argparse
 import json
@@ -30,18 +30,18 @@ from llava.mm_utils import get_model_name_from_path, tokenizer_image_token
 from llava.model.builder import load_pretrained_model
 from llava.utils import disable_torch_init
 
-from ggd.eval_common import (
+from roam.eval_common import (
     load_eic_scores,
     resolve_method,
     validate_method_flags,
 )
-from ggd.models.llava_sampling import (
+from roam.models.llava_sampling import (
     evolve_only_sampling,
     install_ascd_llava15,
 )
-from ggd.monitor import CausalLogitsProcessor, CausalMonitor
-from ggd.only_eic import inject_eic_for_only
-from ggd.vcd import add_diffusion_noise
+from roam.monitor import ROAMLogitsProcessor, ROAMMonitor
+from roam.only_eic import inject_eic_for_only
+from roam.vcd import add_diffusion_noise
 
 warnings.filterwarnings("ignore")
 logging.basicConfig(
@@ -106,12 +106,12 @@ def main():
     disable_torch_init()
     model_path = os.path.expanduser(args.model_path)
     model_name = get_model_name_from_path(model_path)
-    # GGD's grounding monitor needs real attention weights (output_attentions),
-    # which the sdpa kernel returns as None; force eager for ggd only.
+    # ROAM's grounding monitor needs real attention weights (output_attentions),
+    # which the sdpa kernel returns as None; force eager for roam only.
     tokenizer, model, image_processor, _context_len = load_pretrained_model(
         model_path, None, model_name,
         attn_implementation=(
-            "eager" if method in ("ggd", "ascd") else None
+            "eager" if method in ("roam", "ascd") else None
         ),
     )
     if method == "ascd":
@@ -132,14 +132,14 @@ def main():
             f"EIC scores layer={args.layer_index}: "
             f"nonzero={int((eic_scores > 0).sum())}/{len(eic_scores)}"
         )
-        if method == "ggd":
-            monitor = CausalMonitor(
+        if method == "roam":
+            monitor = ROAMMonitor(
                 model, args.layer_index, eic_scores,
                 img_start=args.img_start, img_len=args.img_len,
             )
             orig_fwd = monitor.install_qk_hook()
             processors = LogitsProcessorList([
-                CausalLogitsProcessor(monitor, alpha=args.alpha)
+                ROAMLogitsProcessor(monitor, alpha=args.alpha)
             ])
         elif method == "only_eic":
             layer_for_only = inject_eic_for_only(

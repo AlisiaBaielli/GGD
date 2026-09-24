@@ -11,9 +11,9 @@ import torch
 from scipy.stats import wilcoxon
 from tqdm import tqdm
 
-from ggd.envs import ENV_LIST_K7, BaseExample, EnvMaker
-from ggd.models import llava_adapter
-from ggd.scores import tver_from_attn
+from roam.envs import ENV_LIST_K7, BaseExample, EnvMaker
+from roam.models import llava_adapter
+from roam.scores import tver_from_attn
 
 
 IMAGE_ENVIRONMENTS = ("img_mismatch", "mask", "appearance")
@@ -42,9 +42,9 @@ def measure(args: argparse.Namespace) -> dict:
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     eic = torch.load(args.eic_scores, map_location="cpu", weights_only=False)
     layer = int(eic["chosen_layer"])
-    causal_weights = eic["C"].float()
-    eic_indices = torch.where(causal_weights > 0)[0]
-    weights = causal_weights[eic_indices]
+    monitor_weights = eic["C"].float()
+    eic_indices = torch.where(monitor_weights > 0)[0]
+    weights = monitor_weights[eic_indices]
     weights = weights / weights.sum()
 
     with Path(os.path.expanduser(args.question_file)).open() as handle:

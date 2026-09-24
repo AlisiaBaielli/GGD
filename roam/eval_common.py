@@ -126,7 +126,7 @@ def resolve_method(args) -> Tuple[str, bool]:
         return "m3id", False
     if getattr(args, "no_hook", False):
         return "vanilla", False
-    return "ggd", True
+    return "roam", True
 
 def validate_method_flags(args) -> None:
     names = ("use_only", "use_vcd", "use_m3id", "use_ascd")

@@ -13,9 +13,9 @@ from contextlib import nullcontext
 import torch
 from tqdm import tqdm
 
-from ggd.envs import EnvMaker, BaseExample, ENV_LIST_DEFAULT
-from ggd.scores import RunningStats, tver_from_attn, compute_C, choose_intervention_layer
-from ggd.models import internvl as internvl_adapter
+from roam.envs import EnvMaker, BaseExample, ENV_LIST_DEFAULT
+from roam.scores import RunningStats, tver_from_attn, compute_C, choose_intervention_layer
+from roam.models import internvl as internvl_adapter
 
 
 def _validate_examples(base_examples, n_samples: int, source: str) -> None:
@@ -41,15 +41,15 @@ def _example_ids_sha256(base_examples, n_samples: int) -> str:
 def pick_adapter(name: str):
     name = name.lower()
     if name == "llava":
-        from ggd.models import llava_adapter
+        from roam.models import llava_adapter
         return llava_adapter
     if name in {"qwen", "qwen3", "qwen-vl-3", "qwen3-vl"}:
-        from ggd.models import qwen3_adapter
+        from roam.models import qwen3_adapter
         return qwen3_adapter
     raise ValueError(f"Unsupported model_type: {name}")
 
 def _ensure_repo_paths():
-    """Add causal-hallucination-vlm repo root to sys.path so vendored packages (llava/) are importable."""
+    """Add the repository root so vendored packages are importable."""
     here = os.path.abspath(__file__)
 
     repo_root = os.path.dirname(os.path.dirname(here))

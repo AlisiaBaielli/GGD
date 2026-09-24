@@ -20,7 +20,7 @@ from llava.conversation import conv_templates, SeparatorStyle
 from llava.model.builder import load_pretrained_model
 from llava.utils import disable_torch_init
 from llava.mm_utils import tokenizer_image_token, get_model_name_from_path
-from ggd.models.llava_sampling import evolve_only_sampling
+from roam.models.llava_sampling import evolve_only_sampling
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from _eic_suppress_core import install_eic_suppress, restore_eic_suppress, load_eic_scores

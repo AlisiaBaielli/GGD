@@ -1,5 +1,5 @@
 
-"""Deterministic environment generation for GGD calibration."""
+"""Deterministic environment generation for ROAM calibration."""
 from __future__ import annotations
 import hashlib
 import random

@@ -11,7 +11,7 @@ from PIL import Image
 REPO = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO))
 
-from ggd.transformers_fork import ensure_internvl_fork
+from roam.transformers_fork import ensure_internvl_fork
 ensure_internvl_fork()
 
 from transformers import AutoProcessor
