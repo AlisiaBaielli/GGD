@@ -7,12 +7,32 @@ else
 fi
 setup_cluster
 
-CALIB_JSONL="${CALIB_JSONL:-${COCO_DIR}/calibration.jsonl}"
+if [[ -z "${CALIB_JSONL:-}" ]]; then
+  CALIB_JSONL="${COCO_DIR}/calibration_disjoint.jsonl"
+  BUILD_CALIB_JSONL=1
+else
+  BUILD_CALIB_JSONL=0
+fi
 N_SAMPLES="${N_SAMPLES:-8000}"
-if [ ! -f "${CALIB_JSONL}" ]; then
+CALIB_LAYER="${CALIB_LAYER:-1}"
+CALIB_SEED="${CALIB_SEED:-0}"
+if [[ "${BUILD_CALIB_JSONL}" == "1" || ! -f "${CALIB_JSONL}" ]]; then
+  EXCLUDE_ARGS=(
+    --exclude-chair-n "${CHAIR_EVAL_SAMPLES:-500}"
+    --exclude-chair-seed "${CHAIR_EVAL_SEED:-3407}"
+  )
+  for split in random popular adversarial; do
+    pope_file="${POPE_DIR}/coco_pope_${split}.json"
+    if [[ ! -f "${pope_file}" ]]; then
+      echo "Missing POPE split required for disjoint calibration: ${pope_file}" >&2
+      exit 1
+    fi
+    EXCLUDE_ARGS+=(--exclude-file "${pope_file}")
+  done
   python -m ggd.make_calibration_jsonl \
     --instances "${COCO_DIR}/annotations/instances_val2014.json" \
-    --out "${CALIB_JSONL}" --n "${N_SAMPLES}"
+    --out "${CALIB_JSONL}" --n "${N_SAMPLES}" --seed "${CALIB_SEED}" \
+    "${EXCLUDE_ARGS[@]}"
 fi
 
 RAW="${RAW:-${SCORES_ROOT}/llava_raw.pt}"
@@ -24,7 +44,8 @@ python -m ggd.calibrate \
   --question_file "${CALIB_JSONL}" \
   --image_folder "${COCO_DIR}/val2014" \
   --n_samples "${N_SAMPLES}" \
-  --all_layers \
+  --layer "${CALIB_LAYER}" \
+  --seed0 "${CALIB_SEED}" \
   --variance_mode env_per_example \
   --out "${RAW}"
 

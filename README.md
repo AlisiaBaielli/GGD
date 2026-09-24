@@ -40,7 +40,7 @@ data/
 ├── coco/
 │   ├── annotations/
 │   ├── val2014/
-│   └── calibration.jsonl
+│   └── calibration_disjoint.jsonl
 ├── POPE/
 │   └── coco/
 ├── AMBER/
@@ -55,9 +55,9 @@ data/
 
 Download the model weights and datasets from their official sources, then place them in the directory structure shown above.
 
-## Calibration
+## Offline calibration
 
-Calibrate EIC scores once for each model:
+Create the calibration set and calibrate EIC scores once for each model:
 
 ```bash
 bash scripts/calibrate/llava.sh
@@ -65,7 +65,23 @@ bash scripts/calibrate/qwen3.sh
 bash scripts/calibrate/internvl.sh
 ```
 
-Checkpoints are written to `scores/`.
+Each script deterministically regenerates
+`data/coco/calibration_disjoint.jsonl`. By default it contains 8,000 unique
+COCO images and excludes the union of the 500-image CHAIR evaluation sets and
+all three POPE splits. The scripts stop if those POPE files are unavailable,
+rather than silently creating a partially disjoint set. AMBER and MME use
+separate image collections.
+
+Calibration uses the seven environments and the within-example variance
+estimator described in the paper. The reported monitoring layers are fixed by
+default: LLaVA layer 1, Qwen3-VL layer 0, and InternVL layer 1. Checkpoints in
+`scores/` record the number of examples, perturbation seed, ordered image-ID
+hash, variance estimator, environments, and monitoring layer.
+
+To use different locations or sample counts, set `CALIB_JSONL`, `N_SAMPLES`,
+`CALIB_LAYER`, or `CALIB_SEED` before running a calibration script. A custom
+`CALIB_JSONL` is not regenerated, so it must already satisfy the required
+evaluation-disjoint protocol.
 
 ## Evaluation
 

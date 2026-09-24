@@ -187,6 +187,8 @@ def main():
             input_ids = tokenizer_image_token(
                 prompt, tokenizer, IMAGE_TOKEN_INDEX, return_tensors='pt'
             ).unsqueeze(0).cuda()
+            if monitor is not None:
+                monitor.reset()
 
             image_tensor = image_processor.preprocess(image, return_tensors='pt')['pixel_values'][0]
             image_neg = add_diffusion_noise(image_tensor, args.noise_step) if args.method == "vcd" else None

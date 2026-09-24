@@ -118,6 +118,7 @@ def main():
     else:
         monitor = CausalMonitorQwen3(model, args.layer_index, eic_scores,
                                     image_token_id=model.config.image_token_id)
+        monitor.install_hook()
         causal_processor = CausalLogitsProcessor(monitor, alpha=args.alpha)
         processors = LogitsProcessorList([causal_processor])
 

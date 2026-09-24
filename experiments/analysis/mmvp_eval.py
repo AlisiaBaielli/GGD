@@ -176,6 +176,8 @@ def main():
         input_ids = tokenizer_image_token(
             prompt, tokenizer, IMAGE_TOKEN_INDEX, return_tensors="pt"
         ).unsqueeze(0).to(model.device)
+        if monitor is not None:
+            monitor.reset()
 
         gen_kwargs = dict(
             images=image_tensor,

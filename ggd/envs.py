@@ -1,7 +1,5 @@
 
-"""
-Environment generation for Causal-ONLY calibration.
-"""
+"""Deterministic environment generation for GGD calibration."""
 from __future__ import annotations
 import hashlib
 import random

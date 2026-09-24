@@ -4,6 +4,7 @@ derive EIC scores, and select the intervention layer.
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import os
 import sys
@@ -15,6 +16,27 @@ from tqdm import tqdm
 from ggd.envs import EnvMaker, BaseExample, ENV_LIST_DEFAULT
 from ggd.scores import RunningStats, tver_from_attn, compute_C, choose_intervention_layer
 from ggd.models import internvl as internvl_adapter
+
+
+def _validate_examples(base_examples, n_samples: int, source: str) -> None:
+    if n_samples <= 0:
+        raise ValueError("--n_samples must be positive")
+    if len(base_examples) < n_samples:
+        raise ValueError(
+            f"Requested {n_samples} calibration examples, but {source} "
+            f"contains only {len(base_examples)} valid examples"
+        )
+    ids = [example.example_id for example in base_examples[:n_samples]]
+    if len(ids) != len(set(ids)):
+        raise ValueError("Calibration image IDs must be unique")
+
+
+def _example_ids_sha256(base_examples, n_samples: int) -> str:
+    ordered_ids = "\n".join(
+        example.example_id for example in base_examples[:n_samples]
+    )
+    return hashlib.sha256(ordered_ids.encode("utf-8")).hexdigest()
+
 
 def pick_adapter(name: str):
     name = name.lower()
@@ -162,6 +184,7 @@ def main():
 
     if len(base_examples) == 0:
         raise RuntimeError(f"No examples loaded from {qpath}")
+    _validate_examples(base_examples, args.n_samples, qpath)
 
     env_maker = EnvMaker(base_examples, seed0=args.seed0)
     adapter = pick_adapter(args.model_type)
@@ -241,7 +264,7 @@ def main():
     else:
         raise RuntimeError(f"Unsupported model_type={args.model_type}. Supported: llava, qwen3, internvl.")
 
-    total_examples = min(args.n_samples, len(base_examples))
+    total_examples = args.n_samples
     total_steps = total_examples * len(args.envs)
     step = 0
 
@@ -375,6 +398,10 @@ def main():
         "envs": args.envs,
         "variance_mode": args.variance_mode,
         "n_examples": int(total_examples),
+        "seed0": int(args.seed0),
+        "example_ids_sha256": _example_ids_sha256(
+            base_examples, total_examples
+        ),
         "mean": mean,
         "var": var,
         "C": C,
@@ -426,8 +453,9 @@ def _internvl_main(args=None):
 
     if len(base_examples) == 0:
         raise RuntimeError(f"No examples loaded from {qpath}")
+    _validate_examples(base_examples, args.n_samples, qpath)
 
-    env_maker = EnvMaker(base_examples)
+    env_maker = EnvMaker(base_examples, seed0=args.seed0)
 
     from transformers import AutoProcessor, InternVLForConditionalGeneration
 
@@ -461,7 +489,7 @@ def _internvl_main(args=None):
     bundle = {"processor": processor, "model": model}
     model.eval()
 
-    total_examples = min(args.n_samples, len(base_examples))
+    total_examples = args.n_samples
     total_steps = total_examples * len(args.envs)
     step = 0
 
@@ -591,6 +619,10 @@ def _internvl_main(args=None):
         "envs": args.envs,
         "variance_mode": args.variance_mode,
         "n_examples": int(total_examples),
+        "seed0": int(args.seed0),
+        "example_ids_sha256": _example_ids_sha256(
+            base_examples, total_examples
+        ),
         "mean": mean,
         "var": var,
         "C": C,
