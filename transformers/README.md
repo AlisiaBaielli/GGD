@@ -1,25 +1,21 @@
-# transformers/
+# Transformers runtime overlays
 
-A minimal patched copy of HuggingFace `transformers`, containing only the file we modify:
+This directory contains only the model files modified by GGD for LLaVA,
+Qwen3-VL, and InternVL. It is not a complete Transformers distribution and
+must not be installed as a standalone package.
 
-```
-transformers/src/transformers/models/llama/modeling_llama.py
-```
-
-## Why only LLaMA?
-
-- **LLaVA-v1.5-7B** uses **LLaMA-2-7B** as its language backbone. We patch
-  `modeling_llama.py` to expose attention weights and install a forward-pass hook at the
-  EIC-selected intervention layer.
-- **Qwen3-VL-8B** and **InternVL3.5-8B-HF** ship with their own modelling code that already
-  exposes the required attention tensors. We use the stock transformers package and
-  install hooks at runtime (see `ggd/hooks.py`) — no source-level patch needed.
-
-## Applying the patch
-
-Replace the corresponding file in your transformers installation, or install this fork:
+Install the supported upstream Transformers version through the repository
+setup script:
 
 ```bash
-pip uninstall transformers
-cd transformers && pip install -e .
+bash scripts/setup_env.sh
 ```
+
+At runtime, `ggd/transformers_fork.py` loads the required local model modules
+under `transformers.models.*`. The benchmark entry points invoke this loader
+before importing the affected model classes. The remaining Transformers
+components come from the upstream package installed through
+`requirements.txt`.
+
+The overlaid source files retain their upstream copyright and license
+headers.
