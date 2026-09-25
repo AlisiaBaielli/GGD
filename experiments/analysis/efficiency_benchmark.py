@@ -2,8 +2,8 @@
 Efficiency benchmark: Vanilla / VCD / M3ID / ONLY / Ours on LLaVA-1.5-7B.
 
 Measures per-instance latency (mean ± std) and peak GPU memory for each
-method on the same 50 CHAIR images. Greedy decoding, max_new_tokens=128,
-seed=3407.
+method on the same 50 CHAIR images. Sampling uses temperature=1,
+top_p=1, max_new_tokens=128, and seed=3407.
 """
 import os, sys, json, time, argparse, warnings, random, math
 from pathlib import Path
@@ -43,12 +43,15 @@ def parse_args():
     return p.parse_args()
 
 
-def summarize_caption_records(path):
+def summarize_caption_records(path, warmup=0):
     with open(path) as handle:
         records = [json.loads(line) for line in handle if line.strip()]
     required = {"image_id", "generation_seconds", "peak_memory_gib", "generated_tokens"}
     if not records or any(not required.issubset(record) for record in records):
         raise ValueError(f"{path} does not contain efficiency measurements")
+    if len(records) <= warmup:
+        raise ValueError(f"{path} has no records after {warmup} warmups")
+    records = records[warmup:]
     latency = np.asarray([record["generation_seconds"] for record in records])
     memory = np.asarray([record["peak_memory_gib"] for record in records])
     tokens = np.asarray([record["generated_tokens"] for record in records])
@@ -69,7 +72,7 @@ def analyze_caption_files(args):
         name, path = item.split(":", 1)
         paths[name] = path
     loaded = {
-        name: summarize_caption_records(path)
+        name: summarize_caption_records(path, args.warmup)
         for name, path in paths.items()
     }
     if args.reference not in loaded:
@@ -90,7 +93,7 @@ def analyze_caption_files(args):
             summary["peak_memory_gib"] / reference["peak_memory_gib"]
         )
     result = {
-        "warmup_records_excluded": 0,
+        "warmup_records_excluded": args.warmup,
         "reference": args.reference,
         "methods": summaries,
     }
