@@ -14,7 +14,7 @@ def build_inputs(bundle, image: Image.Image, text: str, device: torch.device) ->
             "role": "user",
             "content": [
                 {"type": "image", "image": image.convert("RGB")},
-                {"type": "text", "text": "Answer yes or no only. " + text},
+                {"type": "text", "text": text},
             ],
         }
     ]

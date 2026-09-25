@@ -25,7 +25,9 @@ from transformers.models.internvl.modeling_internvl_real import (
 from roam.eval_common import (
     chair_protocol_image_files,
     excluded_image_ids,
+    load_eic_scores,
     select_image_files,
+    validate_method_flags,
 )
 from roam.models.internvl import evolve_only_sampling_internvl
 from roam.monitor import (
@@ -65,7 +67,12 @@ def parse_args():
     p.add_argument("--num_eval_samples", type=int, default=500)
     p.add_argument("--max_new_tokens", type=int, default=128)
     p.add_argument("--eic_scores_path", type=str, required=True)
-    p.add_argument("--layer_index", type=int, default=0)
+    p.add_argument("--layer_index", type=int, default=1)
+    p.add_argument(
+        "--allow_score_layer_mismatch",
+        action="store_true",
+        help="Ablations only: apply one calibrated head profile at another layer.",
+    )
     p.add_argument("--alpha", type=float, default=0.7,
                    help="Max temperature reduction when ungrounded")
     p.add_argument("--do_sample", type=str2bool, default=True)
@@ -86,6 +93,7 @@ def parse_args():
 
 def main():
     args = parse_args()
+    validate_method_flags(args)
 
     random.seed(args.seed)
     torch.manual_seed(args.seed)
@@ -116,16 +124,11 @@ def main():
 
     evolve_only_sampling_internvl()
 
-    payload = torch.load(args.eic_scores_path, map_location="cpu")
-    if isinstance(payload, dict):
-        eic_scores = payload.get("scores", payload.get("C", None))
-        if eic_scores is None:
-            eic_scores = next(iter(payload.values()))
-    else:
-        eic_scores = payload
-    if eic_scores.dim() == 2:
-        eic_scores = eic_scores[args.layer_index]
-    eic_scores = eic_scores.float()
+    eic_scores = load_eic_scores(
+        args.eic_scores_path,
+        args.layer_index,
+        require_layer_match=not args.allow_score_layer_mismatch,
+    )
     log.info(f"EIC scores: {eic_scores.shape}, nonzero={int((eic_scores>0).sum())}/{len(eic_scores)}")
 
     monitor = None
@@ -214,7 +217,19 @@ def main():
             if args.use_vcd:
                 neg_inputs["pixel_values"] = add_diffusion_noise(inputs["pixel_values"], args.noise_step)
             else:
-                neg_inputs["pixel_values"] = torch.zeros_like(inputs["pixel_values"])
+                neg_messages = [
+                    {
+                        "role": "user",
+                        "content": [{"type": "text", "text": prompt}],
+                    }
+                ]
+                neg_inputs = processor.apply_chat_template(
+                    neg_messages,
+                    tokenize=True,
+                    add_generation_prompt=True,
+                    return_dict=True,
+                    return_tensors="pt",
+                ).to(model.device)
             generated_ids = contrastive_generate(
                 model, dict(inputs), neg_inputs,
                 max_new_tokens=args.max_new_tokens,

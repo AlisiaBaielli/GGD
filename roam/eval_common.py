@@ -13,6 +13,18 @@ import torch
 REPO_ROOT = Path(__file__).resolve().parents[1]
 
 
+def parse_bool(value: bool | str) -> bool:
+    """Parse explicit CLI booleans without treating ``"False"`` as true."""
+    if isinstance(value, bool):
+        return value
+    normalized = value.strip().lower()
+    if normalized in {"1", "true", "yes", "y", "on"}:
+        return True
+    if normalized in {"0", "false", "no", "n", "off"}:
+        return False
+    raise ValueError(f"Expected a boolean value, got {value!r}")
+
+
 def image_id_from_filename(filename: str) -> int:
     match = re.search(r"(\d+)(?:\.[^.]+)?$", filename)
     if match is None:
@@ -90,6 +102,7 @@ def import_vcd_baseline(model: str):
 def load_eic_scores(
     scores_path: str,
     layer_index: Optional[int] = None,
+    require_layer_match: bool = True,
 ) -> torch.Tensor:
     """Load per-head EIC scores from a calibration checkpoint."""
     payload = torch.load(scores_path, map_location="cpu")
@@ -97,6 +110,17 @@ def load_eic_scores(
         eic_scores = payload.get("C", payload.get("scores", None))
         if eic_scores is None:
             eic_scores = next(v for v in payload.values() if torch.is_tensor(v))
+        if (
+            require_layer_match
+            and layer_index is not None
+            and "chosen_layer" in payload
+        ):
+            chosen_layer = int(payload["chosen_layer"])
+            if chosen_layer != layer_index:
+                raise ValueError(
+                    f"Score checkpoint was calibrated for layer {chosen_layer}, "
+                    f"but layer {layer_index} was requested"
+                )
         if layer_index is None and "chosen_layer" in payload:
             layer_index = int(payload["chosen_layer"])
     else:

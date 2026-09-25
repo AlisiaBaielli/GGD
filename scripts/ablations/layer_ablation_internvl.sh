@@ -21,6 +21,7 @@ python experiments/chair/internvl.py \
   --out_path "${OUT}" \
   --eic_scores_path "${SCORES}" \
   --layer_index "${LAYER}" \
+  --allow_score_layer_mismatch \
   --alpha "${ALPHA}" \
   --num_eval_samples "${NSAMP:-500}" \
   --method_name "roam_L${LAYER}"

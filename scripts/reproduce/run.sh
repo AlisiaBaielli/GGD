@@ -18,7 +18,6 @@ else
   source "$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)/_env.sh"
 fi
 setup_cluster
-require_transformers_v5 2>/dev/null || true
 
 # ---- per-model config ----
 case "${MODEL}" in
@@ -170,6 +169,12 @@ run_pope() {
 }
 
 run_amber() {
+  if [[ ! -f "${AMBER_TOOLKIT}/inference.py" ]]; then
+    echo "Missing AMBER evaluator: ${AMBER_TOOLKIT}/inference.py" >&2
+    echo "Set AMBER_TOOLKIT to a complete AMBER checkout." >&2
+    RUN_FAIL=1
+    return 1
+  fi
   for m in "${METHODS[@]}"; do
     local out="${BASE}/${m}"; local infj="${out}/amber_${m}.json"; local met="${out}/amber_metrics.txt"
     skip_done "${met}" && { echo "skip ${m}"; continue; }

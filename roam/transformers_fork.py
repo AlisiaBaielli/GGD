@@ -1,6 +1,6 @@
 """Mount repo fork modules under ``transformers.models.*``.
 
-Stock HuggingFace ``transformers`` (>=5) provides the base package. Our fork
+Hugging Face ``transformers==5.12.1`` provides the base package. Our fork
 under ``transformers/src/transformers/models/`` carries ONLY/roam attention
 patches for Qwen3-VL and InternVL; those files must replace or extend the
 corresponding ``transformers.models`` submodules at import time.
@@ -45,7 +45,7 @@ def ensure_qwen3_vl_fork() -> None:
     if not fork_dir.is_dir():
         raise ImportError(f"Missing Qwen3-VL fork at {fork_dir}")
 
-    import transformers.models  # noqa: F401 — parent must exist (transformers>=5)
+    import transformers.models  # noqa: F401 — parent must exist
 
     pkg_name = "transformers.models.qwen3_vl"
     _purge_modules(pkg_name)

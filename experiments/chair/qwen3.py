@@ -25,7 +25,9 @@ from transformers.models.qwen3_vl.modeling_qwen3_vl import (
 from roam.eval_common import (
     chair_protocol_image_files,
     excluded_image_ids,
+    load_eic_scores,
     select_image_files,
+    validate_method_flags,
 )
 from roam.models.qwen3 import evolve_only_sampling_qwen3
 from roam.monitor import (
@@ -87,6 +89,7 @@ def parse_args():
 
 def main():
     args = parse_args()
+    validate_method_flags(args)
 
     random.seed(args.seed)
     torch.manual_seed(args.seed)
@@ -111,16 +114,7 @@ def main():
 
     evolve_only_sampling_qwen3()
 
-    payload = torch.load(args.eic_scores_path, map_location="cpu")
-    if isinstance(payload, dict):
-        eic_scores = payload.get("scores", payload.get("C", None))
-        if eic_scores is None:
-            eic_scores = next(iter(payload.values()))
-    else:
-        eic_scores = payload
-    if eic_scores.dim() == 2:
-        eic_scores = eic_scores[args.layer_index]
-    eic_scores = eic_scores.float()
+    eic_scores = load_eic_scores(args.eic_scores_path, args.layer_index)
     log.info(f"EIC scores: {eic_scores.shape}, nonzero={int((eic_scores>0).sum())}/{len(eic_scores)}")
 
     if args.use_only:
@@ -215,7 +209,19 @@ def main():
             if args.use_vcd:
                 neg_inputs["pixel_values"] = add_diffusion_noise(inputs["pixel_values"], args.noise_step)
             else:
-                neg_inputs["pixel_values"] = torch.zeros_like(inputs["pixel_values"])
+                neg_messages = [
+                    {
+                        "role": "user",
+                        "content": [{"type": "text", "text": prompt}],
+                    }
+                ]
+                neg_inputs = processor.apply_chat_template(
+                    neg_messages,
+                    tokenize=True,
+                    add_generation_prompt=True,
+                    return_dict=True,
+                    return_tensors="pt",
+                ).to(model.device)
             generated_ids = contrastive_generate(
                 model, dict(inputs), neg_inputs,
                 max_new_tokens=args.max_new_tokens,

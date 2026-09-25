@@ -32,6 +32,7 @@ from llava.utils import disable_torch_init
 
 from roam.eval_common import (
     load_eic_scores,
+    parse_bool,
     resolve_method,
     validate_method_flags,
 )
@@ -64,7 +65,7 @@ def parse_args():
     p.add_argument("--max_new_tokens", type=int, default=128)
     p.add_argument("--temperature", type=float, default=1.0)
     p.add_argument("--top_p", type=float, default=1.0)
-    p.add_argument("--do_sample", type=bool, default=True)
+    p.add_argument("--do_sample", type=parse_bool, default=True)
     p.add_argument("--eic_scores_path", type=str, default=None)
     p.add_argument("--layer_index", type=int, default=1)
     p.add_argument("--alpha", type=float, default=0.7)

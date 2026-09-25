@@ -15,8 +15,13 @@ else
 fi
 N_SAMPLES="${N_SAMPLES:-8000}"
 CALIB_LAYER="${CALIB_LAYER:-1}"
-CALIB_SEED="${CALIB_SEED:-0}"
-if [[ "${BUILD_CALIB_JSONL}" == "1" || ! -f "${CALIB_JSONL}" ]]; then
+CALIB_SEED="${CALIB_SEED:-20260923}"
+PERTURBATION_SEED="${PERTURBATION_SEED:-0}"
+if [[ "${BUILD_CALIB_JSONL}" == "0" && ! -f "${CALIB_JSONL}" ]]; then
+  echo "Custom CALIB_JSONL does not exist: ${CALIB_JSONL}" >&2
+  exit 1
+fi
+if [[ "${BUILD_CALIB_JSONL}" == "1" ]]; then
   EXCLUDE_ARGS=(
     --exclude-chair-n "${CHAIR_EVAL_SAMPLES:-500}"
     --exclude-chair-seed "${CHAIR_EVAL_SEED:-3407}"
@@ -45,7 +50,7 @@ python -m roam.calibrate \
   --image_folder "${COCO_DIR}/val2014" \
   --n_samples "${N_SAMPLES}" \
   --layer "${CALIB_LAYER}" \
-  --seed0 "${CALIB_SEED}" \
+  --seed0 "${PERTURBATION_SEED}" \
   --variance_mode env_per_example \
   --amp_dtype bf16 \
   --out "${RAW}"

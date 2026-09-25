@@ -21,6 +21,7 @@ from llava.model.builder import load_pretrained_model
 from llava.utils import disable_torch_init
 from llava.mm_utils import tokenizer_image_token, get_model_name_from_path
 from roam.models.llava_sampling import evolve_only_sampling
+from roam.eval_common import parse_bool
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from _eic_suppress_core import install_eic_suppress, restore_eic_suppress, load_eic_scores
@@ -42,7 +43,7 @@ def main():
     p.add_argument("--max_new_tokens", type=int, default=128)
     p.add_argument("--temperature", type=float, default=1.0)
     p.add_argument("--top_p", type=float, default=1.0)
-    p.add_argument("--do_sample", type=bool, default=True)
+    p.add_argument("--do_sample", type=parse_bool, default=True)
     p.add_argument("--eic_scores_path", type=str, required=True)
     p.add_argument("--layer_index", type=int, default=1)
     args = p.parse_args()

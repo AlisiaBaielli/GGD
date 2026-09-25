@@ -20,9 +20,9 @@ esac
 
 CALIB_JSONL="${COCO_DIR}/calibration.jsonl"
 if [ ! -f "${CALIB_JSONL}" ]; then
-  python -m roam.make_calibration_jsonl \
-    --instances "${COCO_DIR}/annotations/instances_val2014.json" \
-    --out "${CALIB_JSONL}" --n 8000
+  echo "Missing official disjoint calibration manifest: ${CALIB_JSONL}" >&2
+  echo "Create it first with scripts/calibrate/internvl.sh." >&2
+  exit 1
 fi
 
 RAW="${SCORES_ROOT}/internvl_raw_K${K}.pt"
@@ -48,6 +48,11 @@ else
   python -m roam.apply_zscore_filter --input "${RAW}" --output "${ZSCORE}"
 fi
 
+CALIB_LAYER="$(
+  python -c 'import sys, torch; print(int(torch.load(sys.argv[1], map_location="cpu", weights_only=False)["chosen_layer"]))' \
+    "${ZSCORE}"
+)"
+
 OUT="${OUT_ROOT}/k_ablation/internvl_K${K}"
 mkdir -p "${OUT}"
 
@@ -58,7 +63,7 @@ python experiments/chair/internvl.py \
   --anno_path "${COCO_DIR}/annotations/instances_val2014.json" \
   --out_path "${OUT}" \
   --eic_scores_path "${ZSCORE}" \
-  --layer_index 1 \
+  --layer_index "${CALIB_LAYER}" \
   --alpha "${ALPHA}" \
   --num_eval_samples "${NCHAIR:-500}" \
   --method_name "roam_K${K}"

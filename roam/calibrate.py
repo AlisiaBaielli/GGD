@@ -227,6 +227,8 @@ def main():
         model.eval()
 
     elif model_type in {"qwen", "qwen3"}:
+        from roam.transformers_fork import ensure_qwen3_vl_fork
+        ensure_qwen3_vl_fork()
         from transformers import AutoProcessor
         from transformers.models.qwen3_vl.modeling_qwen3_vl import Qwen3VLForConditionalGeneration
 
@@ -457,6 +459,8 @@ def _internvl_main(args=None):
 
     env_maker = EnvMaker(base_examples, seed0=args.seed0)
 
+    from roam.transformers_fork import ensure_internvl_fork
+    ensure_internvl_fork()
     from transformers import AutoProcessor, InternVLForConditionalGeneration
 
     model_path = os.path.expanduser(args.model_name)

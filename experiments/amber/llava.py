@@ -30,6 +30,7 @@ from llava.model import LlavaLlamaForCausalLM
 
 from roam.eval_common import (
     load_eic_scores,
+    parse_bool,
     resolve_method,
     validate_method_flags,
 )
@@ -64,7 +65,7 @@ def parse_args():
     p.add_argument("--img_len", type=int, default=576)
     p.add_argument("--temperature", type=float, default=1.0)
     p.add_argument("--top_p", type=float, default=1.0)
-    p.add_argument("--do_sample", type=bool, default=True)
+    p.add_argument("--do_sample", type=parse_bool, default=True)
     p.add_argument("--method_name", type=str, default=None)
     p.add_argument("--no_hook", action="store_true")
     p.add_argument("--use_only", action="store_true")

@@ -72,7 +72,9 @@ Each script deterministically regenerates
 COCO images and excludes the union of the 500-image CHAIR evaluation sets and
 all three POPE splits. The scripts stop if those POPE files are unavailable,
 rather than silently creating a partially disjoint set. AMBER and MME use
-separate image collections.
+separate image collections. The default calibration seed is `20260923`, and
+the same manifest instructions are passed unchanged through each model's
+native chat template. Environment perturbations use seed `0`.
 
 Calibration uses the seven environments and the within-example variance
 estimator described in the paper. The reported monitoring layers are fixed by
@@ -81,9 +83,9 @@ default: LLaVA layer 1, Qwen3-VL layer 0, and InternVL layer 1. Checkpoints in
 hash, variance estimator, environments, and monitoring layer.
 
 To use different locations or sample counts, set `CALIB_JSONL`, `N_SAMPLES`,
-`CALIB_LAYER`, or `CALIB_SEED` before running a calibration script. A custom
-`CALIB_JSONL` is not regenerated, so it must already satisfy the required
-evaluation-disjoint protocol.
+`CALIB_LAYER`, `CALIB_SEED`, or `PERTURBATION_SEED` before running a
+calibration script. A custom `CALIB_JSONL` is not regenerated, so it must
+already satisfy the required evaluation-disjoint protocol.
 
 ## Evaluation
 

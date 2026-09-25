@@ -53,17 +53,18 @@ setup_cluster() {
   fi
   export PYTHONPATH="${REPO_ROOT}:${REPO_ROOT}/transformers/src:${PYTHONPATH:-}"
   export PYTHONSTARTUP="${REPO_ROOT}/roam/_python_startup.py"
+  require_supported_transformers
 }
 
-require_transformers_v5() {
+require_supported_transformers() {
   python - <<'PY'
 import sys
 import transformers
-from packaging import version
-if version.parse(transformers.__version__) < version.parse("5.0.0"):
+supported = "5.12.1"
+if transformers.__version__ != supported:
     print(
-        f"ERROR: transformers {transformers.__version__} is too old for Qwen3/InternVL "
-        "(need >=5.0). Run: bash scripts/setup_env.sh",
+        f"ERROR: transformers {transformers.__version__} is unsupported; "
+        f"this release requires {supported}. Run: bash scripts/setup_env.sh",
         file=sys.stderr,
     )
     sys.exit(1)

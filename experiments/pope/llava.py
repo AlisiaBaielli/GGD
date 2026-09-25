@@ -172,7 +172,10 @@ def main():
 
         img_path = os.path.join(args.data_path, image_file)
         if not os.path.exists(img_path):
-            continue
+            raise FileNotFoundError(
+                f"POPE image not found: {img_path}. "
+                "Check --data_path and the POPE annotation file."
+            )
 
         image = Image.open(img_path).convert("RGB")
         image_tensor = image_processor.preprocess(image, return_tensors="pt")["pixel_values"][0]

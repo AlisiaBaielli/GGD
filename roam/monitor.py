@@ -45,6 +45,9 @@ class ROAMMonitor:
 
         self.grounding_score = 1.0
         self.mean_entropy = 0.0
+        self.has_updated = False
+        self.processor_calls = 0
+        self.monitoring_enabled = len(self.high_c_indices) > 0
         self._handle = None
 
         log.info(f"[ROAM] layer={layer_idx} monitoring {len(self.high_c_indices)}/{self.num_heads} heads, "
@@ -53,6 +56,8 @@ class ROAMMonitor:
     def reset(self):
         self.grounding_score = 1.0
         self.mean_entropy = 0.0
+        self.has_updated = False
+        self.processor_calls = 0
 
     def install_qk_hook(self):
         """
@@ -100,6 +105,7 @@ class ROAMMonitor:
                         if math.isfinite(float(mean_norm_entropy))
                         else 0.0
                     )
+                    monitor.has_updated = True
 
             return result
 
@@ -150,6 +156,9 @@ class ROAMMonitorQwen3:
 
         self.grounding_score = 1.0
         self.mean_entropy = 0.0
+        self.has_updated = False
+        self.processor_calls = 0
+        self.monitoring_enabled = len(self.high_c_indices) > 0
 
         self._orig_forward = None
 
@@ -275,6 +284,7 @@ class ROAMMonitorQwen3:
                         monitor.mean_entropy = torch.nan_to_num(
                             mean_norm_entropy, nan=0.0
                         )
+                        monitor.has_updated = True
 
             return result
 
@@ -288,6 +298,8 @@ class ROAMMonitorQwen3:
         """Call before generate to detect image token positions in the input."""
         self.grounding_score = 1.0
         self.mean_entropy = 0.0
+        self.has_updated = False
+        self.processor_calls = 0
         ids = input_ids[0] if input_ids.dim() > 1 else input_ids
         mask = ids == image_token_id
         if mask.any():
@@ -343,6 +355,9 @@ class ROAMMonitorInternVL:
 
         self.grounding_score = 1.0
         self.mean_entropy = 0.0
+        self.has_updated = False
+        self.processor_calls = 0
+        self.monitoring_enabled = len(self.high_c_indices) > 0
 
         self._orig_forward = None
 
@@ -461,6 +476,7 @@ class ROAMMonitorInternVL:
                         monitor.mean_entropy = torch.nan_to_num(
                             mean_norm_entropy, nan=0.0
                         )
+                        monitor.has_updated = True
 
             return result
 
@@ -474,6 +490,8 @@ class ROAMMonitorInternVL:
         """Call before generate to detect image token positions in the input."""
         self.grounding_score = 1.0
         self.mean_entropy = 0.0
+        self.has_updated = False
+        self.processor_calls = 0
         ids = input_ids[0] if input_ids.dim() > 1 else input_ids
         mask = ids == image_token_id
         if mask.any():
@@ -512,6 +530,17 @@ class ROAMLogitsProcessor:
         self.alpha = alpha
 
     def __call__(self, input_ids, scores):
+        if self.monitor is not None:
+            calls = getattr(self.monitor, "processor_calls", 0)
+            enabled = getattr(self.monitor, "monitoring_enabled", True)
+            if calls > 0 and enabled and not getattr(
+                self.monitor, "has_updated", False
+            ):
+                raise RuntimeError(
+                    "ROAM monitor did not update before the second generated "
+                    "token. Check the attention hook and KV-cache compatibility."
+                )
+            self.monitor.processor_calls = calls + 1
         gs = self.monitor.grounding_score if self.monitor is not None else 1.0
         return sharpen_logits(scores, gs, self.alpha, tau_floor=0.3)
 

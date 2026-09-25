@@ -21,6 +21,7 @@ from transformers.generation.logits_process import LogitsProcessorList
 
 from roam.models.internvl import evolve_only_sampling_internvl
 from roam.monitor import ROAMMonitorInternVL, ROAMLogitsProcessor
+from roam.eval_common import load_eic_scores, validate_method_flags
 
 warnings.filterwarnings("ignore")
 logging.basicConfig(level=logging.INFO, format="[%(asctime)s] %(message)s",
@@ -47,7 +48,7 @@ def main():
     p.add_argument("--max_new_tokens", type=int, default=128)
 
     p.add_argument("--eic_scores_path", type=str, required=True)
-    p.add_argument("--layer_index", type=int, default=0)
+    p.add_argument("--layer_index", type=int, default=1)
     p.add_argument("--alpha", type=float, default=0.7)
 
     p.add_argument("--do_sample", type=str2bool, default=True)
@@ -64,6 +65,7 @@ def main():
     p.add_argument("--cd_alpha", type=float, default=1.0)
     p.add_argument("--cd_beta", type=float, default=0.1)
     args = p.parse_args()
+    validate_method_flags(args)
 
     random.seed(args.seed)
     torch.manual_seed(args.seed)
@@ -84,16 +86,7 @@ def main():
 
     evolve_only_sampling_internvl()
 
-    payload = torch.load(args.eic_scores_path, map_location="cpu")
-    if isinstance(payload, dict):
-        eic_scores = payload.get("scores", payload.get("C", None))
-        if eic_scores is None:
-            eic_scores = next(iter(payload.values()))
-    else:
-        eic_scores = payload
-    if eic_scores.dim() == 2:
-        eic_scores = eic_scores[args.layer_index]
-    eic_scores = eic_scores.float()
+    eic_scores = load_eic_scores(args.eic_scores_path, args.layer_index)
     log.info(f"EIC scores: {eic_scores.shape}, nonzero={int((eic_scores>0).sum())}/{len(eic_scores)}")
 
     monitor = None
