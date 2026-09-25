@@ -1,4 +1,4 @@
-"""Build a reproducible, evaluation-disjoint calibration set from COCO."""
+"""Build a reproducible COCO calibration set with optional ID exclusions."""
 import argparse
 import json
 import random

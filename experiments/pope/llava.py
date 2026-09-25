@@ -98,6 +98,8 @@ def main():
     p.add_argument("--ascd_beta", type=float, default=0.1)
     p.add_argument("--noise_step", type=int, default=500,
                    help="VCD diffusion noise step")
+    p.add_argument("--js_gamma", type=float, default=0.2)
+    p.add_argument("--ritual_beta", type=float, default=0.1)
     p.add_argument("--limit", type=int)
     args = p.parse_args()
 
@@ -211,6 +213,8 @@ def main():
             ascd_alpha=args.ascd_alpha,
             ascd_beta=args.ascd_beta,
             enhance_layer_index=layer_for_only,
+            ritual_beta=args.ritual_beta,
+            js_gamma=args.js_gamma,
         )
         if processors and len(processors) > 0:
             gen_kwargs["logits_processor"] = processors

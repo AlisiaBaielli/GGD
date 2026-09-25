@@ -67,10 +67,13 @@ bash scripts/calibrate/qwen3.sh
 bash scripts/calibrate/internvl.sh
 ```
 
-These commands create one reproducible 8,000-image COCO calibration set,
-disjoint from the evaluation images, and save the model-specific EIC scores
-under `scores/`. Calibration uses the seven perturbation environments and
-default monitoring layers reported in the paper.
+These commands create the paper's 8,000-image COCO calibration set with seed
+`0` and save the model-specific EIC scores under `scores/`. As reported in the
+appendix, 106 calibration image IDs occur in the 500-image CHAIR evaluation
+set; the calibration uses no evaluation labels or benchmark outputs.
+Calibration uses the seven reported perturbation environments. The monitoring
+layers (`1`, `0`, and `1`) were selected once using all-layer calibration;
+the main-result scripts reuse those selected layers.
 
 ## Evaluation
 

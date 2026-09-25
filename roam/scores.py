@@ -112,13 +112,26 @@ def minmax_norm(v: torch.Tensor, eps: float = 1e-12) -> torch.Tensor:
     return (v - vmin) / (vmax - vmin + eps)
 
 def compute_C(mean: torch.Tensor, var: torch.Tensor) -> torch.Tensor:
-    """
-    mean,var: [H]
-    C = (1 - norm(mean)) * (1 - norm(var))
-    """
-    mu = minmax_norm(mean)
-    vv = minmax_norm(var)
-    return (1.0 - mu) * (1.0 - vv)
+    """Compute EIC scores from per-head mean and variance (Eq. 7--9)."""
+    mean_f = mean.float()
+    var_f = var.float()
+    if mean_f.ndim != 1 or var_f.shape != mean_f.shape:
+        raise ValueError(
+            f"Expected matching [H] tensors, got {tuple(mean.shape)} and "
+            f"{tuple(var.shape)}"
+        )
+
+    candidates = mean_f < mean_f.mean()
+    scores = torch.zeros_like(mean_f)
+    n_candidates = int(candidates.sum())
+    if n_candidates > 1:
+        scores[candidates] = (
+            (1.0 - minmax_norm(mean_f[candidates]))
+            * (1.0 - minmax_norm(var_f[candidates]))
+        )
+    elif n_candidates == 1:
+        scores[candidates] = 1.0
+    return scores
 
 def choose_intervention_layer(mu_by_layer: torch.Tensor, eps: float = 1e-12) -> int:
     """Select the intervention layer per the screenshot.

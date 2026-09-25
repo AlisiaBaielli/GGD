@@ -15,33 +15,19 @@ else
 fi
 N_SAMPLES="${N_SAMPLES:-8000}"
 CALIB_LAYER="${CALIB_LAYER:-0}"
-CALIB_SEED="${CALIB_SEED:-20260923}"
+CALIB_SEED="${CALIB_SEED:-0}"
 PERTURBATION_SEED="${PERTURBATION_SEED:-0}"
 if [[ "${BUILD_CALIB_JSONL}" == "0" && ! -f "${CALIB_JSONL}" ]]; then
   echo "Custom CALIB_JSONL does not exist: ${CALIB_JSONL}" >&2
   exit 1
 fi
 if [[ "${BUILD_CALIB_JSONL}" == "1" ]]; then
-  EXCLUDE_ARGS=(
-    --exclude-chair-n "${CHAIR_EVAL_SAMPLES:-500}"
-    --exclude-chair-seed "${CHAIR_EVAL_SEED:-3407}"
-  )
-  for split in random popular adversarial; do
-    pope_file="${POPE_DIR}/coco_pope_${split}.json"
-    if [[ ! -f "${pope_file}" ]]; then
-      echo "Missing POPE split required for disjoint calibration: ${pope_file}" >&2
-      exit 1
-    fi
-    EXCLUDE_ARGS+=(--exclude-file "${pope_file}")
-  done
   python -m roam.make_calibration_jsonl \
     --instances "${COCO_DIR}/annotations/instances_val2014.json" \
-    --out "${CALIB_JSONL}" --n "${N_SAMPLES}" --seed "${CALIB_SEED}" \
-    "${EXCLUDE_ARGS[@]}"
+    --out "${CALIB_JSONL}" --n "${N_SAMPLES}" --seed "${CALIB_SEED}"
 fi
 
-RAW="${RAW:-${SCORES_ROOT}/qwen3_raw.pt}"
-ZSCORE="${ZSCORE:-${SCORES_ROOT}/qwen3_eic.pt}"
+EIC_OUT="${EIC_OUT:-${SCORES_ROOT}/qwen3_eic.pt}"
 
 python -m roam.calibrate \
   --model_name "${MODEL_QWEN3}" \
@@ -53,10 +39,6 @@ python -m roam.calibrate \
   --seed0 "${PERTURBATION_SEED}" \
   --variance_mode env_per_example \
   --amp_dtype bf16 \
-  --out "${RAW}"
+  --out "${EIC_OUT}"
 
-python -m roam.apply_zscore_filter \
-  --input "${RAW}" \
-  --output "${ZSCORE}"
-
-echo "[done] Qwen3 EIC -> ${ZSCORE}"
+echo "[done] Qwen3 EIC -> ${EIC_OUT}"

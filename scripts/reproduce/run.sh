@@ -93,14 +93,22 @@ done
 method_flags() {
   local base="--eic_scores_path ${SCORES} --layer_index ${LAYER}"
   local attention=""
+  local only_args=""
   [[ "${RECORD_EFFICIENCY}" == "1" && "${MODEL}" == "llava" ]] \
     && attention="--attn_implementation eager"
+  if [[ "${MODEL}" == "llava" ]]; then
+    if [[ "${BENCH}" == "chair" ]]; then
+      only_args="--ritual_beta 0.01 --js_gamma 0.25"
+    elif [[ "${BENCH}" == "pope" || "${BENCH}" == "amber" || "${BENCH}" == "mme" ]]; then
+      only_args="--ritual_beta 0.1 --js_gamma 0.2"
+    fi
+  fi
   case "$1" in
     vanilla)  echo "${base} --no_hook ${attention}" ;;
     vcd)      echo "${base} --no_hook --use_vcd ${attention}" ;;
     m3id)     echo "${base} --no_hook --use_m3id ${attention}" ;;
-    only)     echo "${base} --no_hook --use_only ${attention}" ;;
-    only_eic) echo "${base} --no_hook --use_only --use_eic_heads" ;;
+    only)     echo "${base} --no_hook --use_only ${only_args} ${attention}" ;;
+    only_eic) echo "${base} --no_hook --use_only --use_eic_heads ${only_args}" ;;
     roam)    echo "${base} --alpha ${ALPHA}" ;;
     ascd)
       echo "${base} --no_hook --use_ascd --ascd_alpha 1.0 --ascd_beta 0.1"
@@ -203,7 +211,7 @@ run_mme() {
     echo "=== ${MODEL} MME ${m} ==="
     python "experiments/mme/${MODEL}.py" --seed "${SEED}" --model_path "${MPATH}" \
       --image_folder "${MME_IMAGE_DIR}" --question_file "${MME_QUESTIONS}" \
-      --answers_file "${ans}" $(method_flags "${m}") || {
+      --answers_file "${ans}" --max_new_tokens 8 $(method_flags "${m}") || {
         echo "FAILED ${m}"
         RUN_FAIL=1
         continue

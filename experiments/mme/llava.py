@@ -62,7 +62,7 @@ def parse_args():
     p.add_argument("--question_file", type=str, required=True)
     p.add_argument("--answers_file", type=str, required=True)
     p.add_argument("--conv_mode", type=str, default="llava_v1")
-    p.add_argument("--max_new_tokens", type=int, default=128)
+    p.add_argument("--max_new_tokens", type=int, default=8)
     p.add_argument("--temperature", type=float, default=1.0)
     p.add_argument("--top_p", type=float, default=1.0)
     p.add_argument("--do_sample", type=parse_bool, default=True)

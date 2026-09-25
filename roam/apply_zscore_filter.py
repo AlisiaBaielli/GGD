@@ -8,21 +8,11 @@ from __future__ import annotations
 import argparse
 import torch
 
-def minmax_norm(v: torch.Tensor, eps: float = 1e-12) -> torch.Tensor:
-    return (v - v.min()) / (v.max() - v.min() + eps)
+from roam.scores import compute_C
 
 def apply_zscore_filter(mean: torch.Tensor, var: torch.Tensor) -> torch.Tensor:
-    mean_f = mean.float()
-    var_f = var.float()
-    z = (mean_f - mean_f.mean()) / (mean_f.std() + 1e-12)
-    mask = z < 0
-
-    C = torch.zeros_like(mean_f)
-    if mask.sum() > 1:
-        C[mask] = (1.0 - minmax_norm(mean_f[mask])) * (1.0 - minmax_norm(var_f[mask]))
-    elif mask.sum() == 1:
-        C[mask] = 1.0
-    return C
+    """Backward-compatible entry point for the Eq. 7--9 EIC computation."""
+    return compute_C(mean, var)
 
 def main():
     ap = argparse.ArgumentParser()

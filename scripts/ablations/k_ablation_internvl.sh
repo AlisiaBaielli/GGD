@@ -20,7 +20,7 @@ esac
 
 CALIB_JSONL="${COCO_DIR}/calibration.jsonl"
 if [ ! -f "${CALIB_JSONL}" ]; then
-  echo "Missing official disjoint calibration manifest: ${CALIB_JSONL}" >&2
+  echo "Missing main calibration manifest: ${CALIB_JSONL}" >&2
   echo "Create it first with scripts/calibrate/internvl.sh." >&2
   exit 1
 fi

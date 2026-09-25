@@ -50,7 +50,7 @@ def parse_args():
     p.add_argument("--only_alpha_pos", type=float, default=3.0)
     p.add_argument("--only_alpha_neg", type=float, default=1.0)
     p.add_argument("--only_beta", type=float, default=0.1)
-    p.add_argument("--only_gamma", type=float, default=0.25)
+    p.add_argument("--only_gamma", type=float, default=0.2)
     p.add_argument("--use_vcd", action="store_true",
                    help="Run VCD baseline (diffusion-noised negative image, contrastive decoding).")
     p.add_argument("--use_ascd", action="store_true")

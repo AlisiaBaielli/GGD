@@ -525,9 +525,10 @@ class ROAMLogitsProcessor:
     A 0.3 floor is enforced to avoid over-sharpening.
     """
 
-    def __init__(self, monitor, alpha=0.7):
+    def __init__(self, monitor, alpha=0.7, tau_floor=0.3):
         self.monitor = monitor
         self.alpha = alpha
+        self.tau_floor = tau_floor
 
     def __call__(self, input_ids, scores):
         if self.monitor is not None:
@@ -542,7 +543,9 @@ class ROAMLogitsProcessor:
                 )
             self.monitor.processor_calls = calls + 1
         gs = self.monitor.grounding_score if self.monitor is not None else 1.0
-        return sharpen_logits(scores, gs, self.alpha, tau_floor=0.3)
+        return sharpen_logits(
+            scores, gs, self.alpha, tau_floor=self.tau_floor
+        )
 
 
 def parse_image_id(filename: str) -> int:

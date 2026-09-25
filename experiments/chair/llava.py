@@ -110,10 +110,10 @@ def parse_args():
     p.add_argument("--ascd_beta", type=float, default=0.1)
     p.add_argument("--noise_step", type=int, default=500)
 
-    p.add_argument("--js_gamma", type=float, default=0.2)
+    p.add_argument("--js_gamma", type=float, default=0.25)
     p.add_argument("--ritual_alpha_pos", type=float, default=3.0)
     p.add_argument("--ritual_alpha_neg", type=float, default=1.0)
-    p.add_argument("--ritual_beta", type=float, default=0.1)
+    p.add_argument("--ritual_beta", type=float, default=0.01)
     return p.parse_args()
 
 def main():
